@@ -20,7 +20,7 @@ export class Game {
   private itemManager!: ItemManager
   private uiManager!: UIManager
   private audioManager!: AudioManager
-  private bounds = 24
+  private bounds = 1000
   private ammo = 30
   private maxAmmo = 30
   private lastShotTime = 0
@@ -35,7 +35,7 @@ export class Game {
   private currentChunkX = 0
   private currentChunkZ = 0
   private chunkSize = 24
-  private loadDistance = 1
+  private loadDistance = 2
 
   constructor() {
     this.scene = new THREE.Scene()
@@ -131,41 +131,47 @@ export class Game {
   }
 
   private updateTerrainChunks(): void {
-    const key = `${this.currentChunkX},${this.currentChunkZ}`
-    
-    if (this.terrainChunks.has(key)) return
-    
-    const chunkData = this.mapGenerator.generateChunk(this.currentChunkX, this.currentChunkZ)
-    const chunkGroup = new THREE.Group()
-    chunkGroup.name = `chunk_${key}`
-    
-    for (const rock of chunkData.rocks) {
-      const geo = new THREE.DodecahedronGeometry(rock.radius, 0)
-      const mat = new THREE.MeshStandardMaterial({ color: 0x666688, roughness: 0.8 })
-      const mesh = new THREE.Mesh(geo, mat)
-      mesh.castShadow = true
-      mesh.receiveShadow = true
-      mesh.position.set(rock.x, rock.height * 0.5, rock.z)
-      mesh.scale.y = rock.height / rock.radius
-      chunkGroup.add(mesh)
+    for (let dx = -this.loadDistance; dx <= this.loadDistance; dx++) {
+      for (let dz = -this.loadDistance; dz <= this.loadDistance; dz++) {
+        const cx = this.currentChunkX + dx
+        const cz = this.currentChunkZ + dz
+        const key = `${cx},${cz}`
+        
+        if (this.terrainChunks.has(key)) continue
+        
+        const chunkData = this.mapGenerator.generateChunk(cx, cz)
+        const chunkGroup = new THREE.Group()
+        chunkGroup.name = `chunk_${key}`
+        
+        for (const rock of chunkData.rocks) {
+          const geo = new THREE.DodecahedronGeometry(rock.radius, 0)
+          const mat = new THREE.MeshStandardMaterial({ color: 0x666688, roughness: 0.8 })
+          const mesh = new THREE.Mesh(geo, mat)
+          mesh.castShadow = true
+          mesh.receiveShadow = true
+          mesh.position.set(rock.x, rock.height * 0.5, rock.z)
+          mesh.scale.y = rock.height / rock.radius
+          chunkGroup.add(mesh)
+        }
+        
+        for (const veg of chunkData.vegetation) {
+          this.createVegetationMeshInChunk(veg, chunkGroup)
+        }
+        
+        for (const res of chunkData.resources) {
+          const geo = new THREE.OctahedronGeometry(0.3, 0)
+          const color = res.type === 'herb' ? 0x44ff88 : 0x8888ff
+          const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.3 })
+          const mesh = new THREE.Mesh(geo, mat)
+          mesh.castShadow = true
+          mesh.position.set(res.x, 0.5, res.z)
+          chunkGroup.add(mesh)
+        }
+        
+        this.scene.add(chunkGroup)
+        this.terrainChunks.set(key, chunkGroup)
+      }
     }
-    
-    for (const veg of chunkData.vegetation) {
-      this.createVegetationMeshInChunk(veg, chunkGroup)
-    }
-    
-    for (const res of chunkData.resources) {
-      const geo = new THREE.OctahedronGeometry(0.3, 0)
-      const color = res.type === 'herb' ? 0x44ff88 : 0x8888ff
-      const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.3 })
-      const mesh = new THREE.Mesh(geo, mat)
-      mesh.castShadow = true
-      mesh.position.set(res.x, 0.5, res.z)
-      chunkGroup.add(mesh)
-    }
-    
-    this.scene.add(chunkGroup)
-    this.terrainChunks.set(key, chunkGroup)
     
     const allRocks = [...this.mapData.rocks, ...this.getAllChunkRocks()]
     this.player.setRocks(allRocks)
@@ -189,6 +195,10 @@ export class Game {
       })
     }
     return rocks
+  }
+
+  private getAllRocks(): { x: number; z: number; radius: number; height: number }[] {
+    return [...this.mapData.rocks, ...this.getAllChunkRocks()]
   }
 
   private createVegetationMeshInChunk(veg: Vegetation, parent: THREE.Group): void {
@@ -349,16 +359,36 @@ export class Game {
   }
 
   private createGround(): void {
-    const gridHelper = new THREE.GridHelper(50, 50, 0x444466, 0x333355)
+    const gridSize = 200
+    const gridDivisions = 100
+    
+    const gridHelper = new THREE.GridHelper(gridSize, gridDivisions, 0x444466, 0x333355)
+    gridHelper.name = 'groundGrid'
     this.scene.add(gridHelper)
 
-    const groundGeo = new THREE.PlaneGeometry(50, 50)
+    const groundGeo = new THREE.PlaneGeometry(gridSize, gridSize)
     const groundMat = new THREE.MeshStandardMaterial({ color: 0x222233 })
     const ground = new THREE.Mesh(groundGeo, groundMat)
     ground.rotation.x = -Math.PI / 2
     ground.position.y = -0.01
     ground.receiveShadow = true
+    ground.name = 'groundPlane'
     this.scene.add(ground)
+  }
+
+  private updateGround(): void {
+    const playerPos = this.player.mesh.position
+    const gridHelper = this.scene.getObjectByName('groundGrid') as THREE.GridHelper
+    const groundPlane = this.scene.getObjectByName('groundPlane') as THREE.Mesh
+    
+    if (gridHelper) {
+      gridHelper.position.x = playerPos.x
+      gridHelper.position.z = playerPos.z
+    }
+    if (groundPlane) {
+      groundPlane.position.x = playerPos.x
+      groundPlane.position.z = playerPos.z
+    }
   }
 
   private createPlayer(): void {
@@ -367,6 +397,14 @@ export class Game {
   }
 
   private spawnInitialEnemies(): void {
+    const playerPos = this.player.mesh.position
+    
+    for (let i = 0; i < 8; i++) {
+      this.spawnEnemyNearPlayer(playerPos)
+    }
+  }
+
+  private spawnEnemyNearPlayer(playerPos: THREE.Vector3): void {
     const enemyTypes: EnemyType[] = [EnemyType.Goblin, EnemyType.Orc, EnemyType.Slime, EnemyType.Bat]
     const colors: Record<EnemyType, number> = {
       [EnemyType.Goblin]: 0x44aa44,
@@ -380,20 +418,24 @@ export class Game {
       [EnemyType.Slime]: { hp: 30, speed: 2.5, damage: 5, detectRange: 8, attackRange: 1 },
       [EnemyType.Bat]: { hp: 20, speed: 5, damage: 4, detectRange: 15, attackRange: 0.8 }
     }
-
-    for (let i = 0; i < 5; i++) {
-      const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)]
-      const config: EnemyConfig = {
-        type,
-        hp: stats[type].hp,
-        speed: stats[type].speed,
-        damage: stats[type].damage,
-        detectRange: stats[type].detectRange,
-        attackRange: stats[type].attackRange,
-        color: colors[type]
-      }
-      this.enemyManager.spawn(config, this.bounds, this.mapData.rocks)
+    
+    const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)]
+    const config: EnemyConfig = {
+      type,
+      hp: stats[type].hp,
+      speed: stats[type].speed,
+      damage: stats[type].damage,
+      detectRange: stats[type].detectRange,
+      attackRange: stats[type].attackRange,
+      color: colors[type]
     }
+    
+    const angle = Math.random() * Math.PI * 2
+    const distance = 15 + Math.random() * 20
+    const x = playerPos.x + Math.cos(angle) * distance
+    const z = playerPos.z + Math.sin(angle) * distance
+    
+    this.enemyManager.spawnAt(config, new THREE.Vector3(x, 0, z), this.getAllRocks())
   }
 
   private handleInput(): void {
@@ -441,6 +483,16 @@ export class Game {
     })
   }
 
+  private updateCamera(): void {
+    const targetX = this.player.mesh.position.x
+    const targetZ = this.player.mesh.position.z + 20
+    
+    this.camera.position.x = targetX
+    this.camera.position.z = targetZ
+    this.camera.position.y = 25
+    this.camera.lookAt(this.player.mesh.position.x, 0, this.player.mesh.position.z)
+  }
+
   private animate = (): void => {
     requestAnimationFrame(this.animate)
 
@@ -475,6 +527,12 @@ export class Game {
         case ItemType.Ore:
           this.ores += item.value
           break
+        case ItemType.HealthPotion:
+          this.player.heal(item.value)
+          break
+        case ItemType.SpeedPotion:
+          this.player.applySpeedBoost(item.value, 5)
+          break
       }
     }
   }
@@ -493,7 +551,7 @@ export class Game {
           this.bulletManager.remove(bullet)
 
           if (dead) {
-            this.itemManager.spawnAtEnemyDeath(enemy.getPosition())
+            this.itemManager.spawnAtEnemyDeath(enemy.getPosition(), enemy.type)
             this.enemyManager.remove(enemy)
           }
           break
@@ -640,6 +698,9 @@ export class Game {
       this.updateTerrainChunks()
     }
     
+    this.updateCamera()
+    this.updateGround()
+    
     this.player.update(delta, this.camera, this.bounds)
     this.bulletManager.update(delta)
     this.enemyManager.update(delta, this.player.mesh.position)
@@ -663,30 +724,11 @@ export class Game {
     this.enemySpawnTimer += delta
     if (this.enemySpawnTimer >= 3) {
       this.enemySpawnTimer = 0
-      const enemyTypes: EnemyType[] = [EnemyType.Goblin, EnemyType.Orc, EnemyType.Slime, EnemyType.Bat]
-      const colors: Record<EnemyType, number> = {
-        [EnemyType.Goblin]: 0x44aa44,
-        [EnemyType.Orc]: 0x665533,
-        [EnemyType.Slime]: 0x44ff88,
-        [EnemyType.Bat]: 0x443366
+      const playerPos = this.player.mesh.position
+      
+      if (this.enemyManager.getEnemies().length < 15) {
+        this.spawnEnemyNearPlayer(playerPos)
       }
-      const stats: Record<EnemyType, { hp: number; speed: number; damage: number; detectRange: number; attackRange: number }> = {
-        [EnemyType.Goblin]: { hp: 40, speed: 3.5, damage: 8, detectRange: 12, attackRange: 1.2 },
-        [EnemyType.Orc]: { hp: 80, speed: 2, damage: 15, detectRange: 10, attackRange: 1.5 },
-        [EnemyType.Slime]: { hp: 30, speed: 2.5, damage: 5, detectRange: 8, attackRange: 1 },
-        [EnemyType.Bat]: { hp: 20, speed: 5, damage: 4, detectRange: 15, attackRange: 0.8 }
-      }
-      const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)]
-      const config: EnemyConfig = {
-        type,
-        hp: stats[type].hp,
-        speed: stats[type].speed,
-        damage: stats[type].damage,
-        detectRange: stats[type].detectRange,
-        attackRange: stats[type].attackRange,
-        color: colors[type]
-      }
-      this.enemyManager.spawn(config, this.bounds, this.mapData.rocks)
     }
   }
 }

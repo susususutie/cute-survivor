@@ -438,6 +438,13 @@ export class EnemyManager {
     }
   }
 
+  spawnAt(config: EnemyConfig, position: THREE.Vector3, rocks: Rock[]): void {
+    const enemy = new Enemy(config, position)
+    enemy.setRocks(rocks)
+    this.enemies.push(enemy)
+    this.scene.add(enemy.mesh)
+  }
+
   getEnemies(): Enemy[] {
     return this.enemies
   }
