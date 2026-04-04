@@ -61,8 +61,8 @@ export class Game {
     this.generateMap()
     this.createLights()
     this.createGround()
-    this.createMapObjects()
     this.createPlayer()
+    this.createMapObjects()
     this.bulletManager = new BulletManager(this.scene)
     this.enemyManager = new EnemyManager(this.scene)
     this.itemManager = new ItemManager(this.scene)
@@ -79,6 +79,8 @@ export class Game {
   }
 
   private createMapObjects(): void {
+    const rockMeshes: THREE.Mesh[] = []
+    
     for (const rock of this.mapData.rocks) {
       const geo = new THREE.DodecahedronGeometry(rock.radius, 0)
       const mat = new THREE.MeshStandardMaterial({ color: 0x666688, roughness: 0.8 })
@@ -87,6 +89,7 @@ export class Game {
       mesh.receiveShadow = true
       mesh.position.set(rock.x, rock.radius * 0.5, rock.z)
       this.scene.add(mesh)
+      rockMeshes.push(mesh)
     }
 
     for (const res of this.mapData.resources) {
@@ -98,6 +101,9 @@ export class Game {
       mesh.position.set(res.x, 0.5, res.z)
       this.scene.add(mesh)
     }
+    
+    this.player.setRocks(this.mapData.rocks)
+    this.player.setRockMeshes(rockMeshes)
   }
 
   private createLights(): void {
@@ -161,7 +167,7 @@ export class Game {
         this.ammo--
 
         const dir = this.player.getDirection()
-        const pos = this.player.mesh.position.clone()
+        const pos = this.player.getMuzzlePosition()
         this.bulletManager.fire(pos, dir)
         this.audioManager.playShoot()
       }
@@ -242,6 +248,7 @@ export class Game {
       for (const enemy of enemies) {
         const dist = bullet.getPosition().distanceTo(enemy.getPosition())
         if (dist < 1) {
+          this.createKillEffect(enemy.getPosition())
           const dead = enemy.takeDamage(bullet.state.damage)
           this.audioManager.playHit()
           this.bulletManager.remove(bullet)
@@ -253,6 +260,116 @@ export class Game {
           break
         }
       }
+    }
+  }
+
+  private effectParticles: THREE.Points[] = []
+  
+  private createKillEffect(position: THREE.Vector3): void {
+    const particleCount = 50
+    const geometry = new THREE.BufferGeometry()
+    const positions = new Float32Array(particleCount * 3)
+    const colors = new Float32Array(particleCount * 3)
+    const velocities: THREE.Vector3[] = []
+    
+    for (let i = 0; i < particleCount; i++) {
+      positions[i * 3] = position.x
+      positions[i * 3 + 1] = position.y + 0.5
+      positions[i * 3 + 2] = position.z
+      
+      const angle = Math.random() * Math.PI * 2
+      const speed = 4 + Math.random() * 6
+      velocities.push(new THREE.Vector3(
+        Math.cos(angle) * speed,
+        3 + Math.random() * 5,
+        Math.sin(angle) * speed
+      ))
+      
+      const color = new THREE.Color()
+      const hue = Math.random() < 0.5 ? 0.05 + Math.random() * 0.1 : 0.5 + Math.random() * 0.2
+      color.setHSL(hue, 1, 0.6)
+      colors[i * 3] = color.r
+      colors[i * 3 + 1] = color.g
+      colors[i * 3 + 2] = color.b
+    }
+    
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+    
+    const material = new THREE.PointsMaterial({
+      size: 0.25,
+      vertexColors: true,
+      transparent: true,
+      opacity: 1,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    })
+    
+    const particles = new THREE.Points(geometry, material)
+    particles.userData = { velocities, life: 1.2 }
+    this.scene.add(particles)
+    this.effectParticles.push(particles)
+    
+    const ringGeo = new THREE.RingGeometry(0.1, 0.3, 32)
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xffaa00,
+      transparent: true,
+      opacity: 0.8,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending
+    })
+    const ring = new THREE.Mesh(ringGeo, ringMat)
+    ring.position.set(position.x, position.y + 0.3, position.z)
+    ring.rotation.x = -Math.PI / 2
+    ring.userData = { isRing: true, life: 0.5, scale: 1 }
+    this.scene.add(ring)
+    this.effectParticles.push(ring as unknown as THREE.Points)
+  }
+
+  private updateEffects(delta: number): void {
+    const toRemove: THREE.Points[] = []
+    
+    for (const particles of this.effectParticles) {
+      if ((particles.userData as { isRing?: boolean }).isRing) {
+        const ring = particles as unknown as THREE.Mesh
+        const data = ring.userData as { life: number; scale: number }
+        data.life -= delta * 2
+        data.scale += delta * 8
+        ring.scale.set(data.scale, data.scale, 1)
+        ;(ring.material as THREE.MeshBasicMaterial).opacity = data.life * 1.5
+        
+        if (data.life <= 0) {
+          toRemove.push(particles)
+        }
+        continue
+      }
+      
+      const positions = particles.geometry.attributes.position.array as Float32Array
+      const velocities = particles.userData.velocities
+      const life = particles.userData.life
+      
+      for (let i = 0; i < velocities.length; i++) {
+        positions[i * 3] += velocities[i].x * delta
+        positions[i * 3 + 1] += velocities[i].y * delta
+        positions[i * 3 + 2] += velocities[i].z * delta
+        velocities[i].y -= 10 * delta
+      }
+      
+      particles.geometry.attributes.position.needsUpdate = true
+      particles.userData.life -= delta * 2
+      ;(particles.material as THREE.PointsMaterial).opacity = particles.userData.life
+      
+      if (particles.userData.life <= 0) {
+        toRemove.push(particles)
+      }
+    }
+    
+    for (const p of toRemove) {
+      this.scene.remove(p)
+      const idx = this.effectParticles.indexOf(p)
+      if (idx > -1) this.effectParticles.splice(idx, 1)
+      if (p.geometry) p.geometry.dispose()
+      if (p.material) (p.material as THREE.Material).dispose()
     }
   }
 
@@ -279,6 +396,7 @@ export class Game {
     this.bulletManager.update(delta)
     this.enemyManager.update(delta, this.player.mesh.position)
     this.itemManager.update(delta)
+    this.updateEffects(delta)
 
     this.checkBulletEnemyCollisions()
     this.checkEnemyPlayerCollisions()

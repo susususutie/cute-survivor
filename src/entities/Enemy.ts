@@ -17,7 +17,7 @@ export interface EnemyConfig {
 }
 
 export class Enemy {
-  public mesh: THREE.Mesh
+  public mesh: THREE.Group
   public hp: number
   public maxHp: number
   public speed: number
@@ -30,12 +30,64 @@ export class Enemy {
   private attackCooldown = 0
 
   constructor(config: EnemyConfig, spawnPos: THREE.Vector3) {
-    const geo = new THREE.BoxGeometry(1, 1.2, 1)
-    const mat = new THREE.MeshStandardMaterial({ color: config.color })
-    this.mesh = new THREE.Mesh(geo, mat)
-    this.mesh.castShadow = true
+    this.mesh = new THREE.Group()
+    
+    const bodyGeo = new THREE.BoxGeometry(0.9, 1, 0.7)
+    const bodyMat = new THREE.MeshStandardMaterial({ color: config.color, roughness: 0.6 })
+    const body = new THREE.Mesh(bodyGeo, bodyMat)
+    body.castShadow = true
+    body.position.y = 0.5
+    this.mesh.add(body)
+    
+    const headGeo = new THREE.BoxGeometry(0.6, 0.5, 0.5)
+    const headMat = new THREE.MeshStandardMaterial({ color: 0xcc4433, roughness: 0.5 })
+    const head = new THREE.Mesh(headGeo, headMat)
+    head.castShadow = true
+    head.position.y = 1.15
+    this.mesh.add(head)
+    
+    const eyeGeo = new THREE.SphereGeometry(0.08, 8, 8)
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 })
+    const eyeL = new THREE.Mesh(eyeGeo, eyeMat)
+    eyeL.position.set(-0.15, 1.2, 0.25)
+    this.mesh.add(eyeL)
+    const eyeR = new THREE.Mesh(eyeGeo, eyeMat)
+    eyeR.position.set(0.15, 1.2, 0.25)
+    this.mesh.add(eyeR)
+    
+    const hornGeo = new THREE.ConeGeometry(0.08, 0.3, 6)
+    const hornMat = new THREE.MeshStandardMaterial({ color: 0x332211 })
+    const hornL = new THREE.Mesh(hornGeo, hornMat)
+    hornL.position.set(-0.2, 1.5, -0.1)
+    hornL.rotation.z = 0.3
+    this.mesh.add(hornL)
+    const hornR = new THREE.Mesh(hornGeo, hornMat)
+    hornR.position.set(0.2, 1.5, -0.1)
+    hornR.rotation.z = -0.3
+    this.mesh.add(hornR)
+    
+    const armGeo = new THREE.BoxGeometry(0.25, 0.5, 0.2)
+    const armMat = new THREE.MeshStandardMaterial({ color: config.color })
+    const armL = new THREE.Mesh(armGeo, armMat)
+    armL.position.set(-0.55, 0.5, 0)
+    armL.rotation.z = 0.3
+    this.mesh.add(armL)
+    const armR = new THREE.Mesh(armGeo, armMat)
+    armR.position.set(0.55, 0.5, 0)
+    armR.rotation.z = -0.3
+    this.mesh.add(armR)
+    
+    const legGeo = new THREE.CylinderGeometry(0.12, 0.1, 0.4, 8)
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x442211 })
+    const legL = new THREE.Mesh(legGeo, legMat)
+    legL.position.set(-0.25, 0.1, 0)
+    this.mesh.add(legL)
+    const legR = new THREE.Mesh(legGeo, legMat)
+    legR.position.set(0.25, 0.1, 0)
+    this.mesh.add(legR)
+    
     this.mesh.position.copy(spawnPos)
-    this.mesh.position.y = 0.6
+    this.mesh.position.y = 0
 
     this.hp = config.hp
     this.maxHp = config.hp
@@ -112,13 +164,18 @@ export class Enemy {
   takeDamage(amount: number): boolean {
     this.hp -= amount
 
-    const mat = this.mesh.material as THREE.MeshStandardMaterial
-    const originalColor = mat.color.getHex()
-    mat.color.setHex(0xffffff)
-
-    setTimeout(() => {
-      mat.color.setHex(originalColor)
-    }, 100)
+    for (const child of this.mesh.children) {
+      if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+        const mat = child.material
+        const originalColor = mat.color.getHex()
+        mat.color.setHex(0xffffff)
+        
+        setTimeout(() => {
+          mat.color.setHex(originalColor)
+        }, 100)
+        break
+      }
+    }
 
     return this.hp <= 0
   }
