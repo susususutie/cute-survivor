@@ -5,6 +5,7 @@ import { EnemyManager, EnemyConfig, Enemy } from '../entities/Enemy'
 import { MapGenerator, MapData } from '../systems/MapGenerator'
 import { ItemManager, ItemType, ItemData } from '../systems/ItemSystem'
 import { UIManager } from '../systems/UIManager'
+import { AudioManager } from '../systems/AudioManager'
 
 export class Game {
   private scene: THREE.Scene
@@ -18,6 +19,7 @@ export class Game {
   private mapData!: MapData
   private itemManager!: ItemManager
   private uiManager!: UIManager
+  private audioManager!: AudioManager
   private bounds = 24
   private ammo = 30
   private maxAmmo = 30
@@ -55,6 +57,7 @@ export class Game {
 
   init(): void {
     this.uiManager = new UIManager()
+    this.audioManager = new AudioManager()
     this.generateMap()
     this.createLights()
     this.createGround()
@@ -67,6 +70,7 @@ export class Game {
     this.handleInput()
     this.handleResize()
     this.animate()
+    this.audioManager.startBGM()
   }
 
   private generateMap(): void {
@@ -159,6 +163,7 @@ export class Game {
         const dir = this.player.getDirection()
         const pos = this.player.mesh.position.clone()
         this.bulletManager.fire(pos, dir)
+        this.audioManager.playShoot()
       }
     })
 
@@ -174,6 +179,9 @@ export class Game {
       }
       if (e.key.toLowerCase() === 'r' && this.isGameOver) {
         location.reload()
+      }
+      if (e.key.toLowerCase() === 'm') {
+        this.audioManager.toggleMute()
       }
     })
   }
@@ -204,6 +212,10 @@ export class Game {
   private collectItems(): void {
     const collected = this.itemManager.collectItemsInRange(this.player.mesh.position, 1.5)
 
+    if (collected.length > 0) {
+      this.audioManager.playPickup()
+    }
+
     for (const item of collected) {
       switch (item.type) {
         case ItemType.Gold:
@@ -231,6 +243,7 @@ export class Game {
         const dist = bullet.getPosition().distanceTo(enemy.getPosition())
         if (dist < 1) {
           const dead = enemy.takeDamage(bullet.state.damage)
+          this.audioManager.playHit()
           this.bulletManager.remove(bullet)
 
           if (dead) {
@@ -251,6 +264,7 @@ export class Game {
       const dist = enemy.getPosition().distanceTo(playerPos)
       if (dist < 1.2 && enemy.canAttack()) {
         enemy.attack()
+        this.audioManager.playEnemyAttack()
         const dead = this.player.takeDamage(enemy.damage)
         if (dead) {
           this.isGameOver = true
