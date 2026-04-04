@@ -19,11 +19,13 @@ export class Player {
     const geo = new THREE.CylinderGeometry(0.5, 0.5, 1, 16)
     const mat = new THREE.MeshStandardMaterial({ color: 0x44aaff })
     this.mesh = new THREE.Mesh(geo, mat)
+    this.mesh.castShadow = true
     this.mesh.position.set(0, 0.5, 0)
 
     const barrelGeo = new THREE.BoxGeometry(0.15, 0.15, 0.6)
     const barrelMat = new THREE.MeshStandardMaterial({ color: 0x88ccff })
     const barrel = new THREE.Mesh(barrelGeo, barrelMat)
+    barrel.castShadow = true
     barrel.position.set(0, 0.3, 0.4)
     this.mesh.add(barrel)
 

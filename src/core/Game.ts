@@ -8,7 +8,7 @@ import { UIManager } from '../systems/UIManager'
 
 export class Game {
   private scene: THREE.Scene
-  private camera: THREE.OrthographicCamera
+  private camera: THREE.PerspectiveCamera
   private renderer: THREE.WebGLRenderer
   private clock: THREE.Clock
   private player!: Player
@@ -35,21 +35,15 @@ export class Game {
     this.scene.background = new THREE.Color(0x1a1a2e)
 
     const aspect = window.innerWidth / window.innerHeight
-    const viewSize = 20
-    this.camera = new THREE.OrthographicCamera(
-      -viewSize * aspect,
-      viewSize * aspect,
-      viewSize,
-      -viewSize,
-      0.1,
-      1000
-    )
-    this.camera.position.set(0, 20, 0)
+    this.camera = new THREE.PerspectiveCamera(50, aspect, 0.1, 1000)
+    this.camera.position.set(0, 25, 20)
     this.camera.lookAt(0, 0, 0)
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true })
     this.renderer.setSize(window.innerWidth, window.innerHeight)
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    this.renderer.shadowMap.enabled = true
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
 
     const app = document.getElementById('app')
     if (app) {
@@ -83,8 +77,10 @@ export class Game {
   private createMapObjects(): void {
     for (const rock of this.mapData.rocks) {
       const geo = new THREE.DodecahedronGeometry(rock.radius, 0)
-      const mat = new THREE.MeshStandardMaterial({ color: 0x666688 })
+      const mat = new THREE.MeshStandardMaterial({ color: 0x666688, roughness: 0.8 })
       const mesh = new THREE.Mesh(geo, mat)
+      mesh.castShadow = true
+      mesh.receiveShadow = true
       mesh.position.set(rock.x, rock.radius * 0.5, rock.z)
       this.scene.add(mesh)
     }
@@ -94,17 +90,27 @@ export class Game {
       const color = res.type === 'herb' ? 0x44ff88 : 0x8888ff
       const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.3 })
       const mesh = new THREE.Mesh(geo, mat)
+      mesh.castShadow = true
       mesh.position.set(res.x, 0.5, res.z)
       this.scene.add(mesh)
     }
   }
 
   private createLights(): void {
-    const ambient = new THREE.AmbientLight(0xffffff, 0.6)
+    const ambient = new THREE.AmbientLight(0xffffff, 0.5)
     this.scene.add(ambient)
 
-    const directional = new THREE.DirectionalLight(0xffffff, 0.8)
-    directional.position.set(10, 20, 10)
+    const directional = new THREE.DirectionalLight(0xfff5e0, 1)
+    directional.position.set(15, 30, 10)
+    directional.castShadow = true
+    directional.shadow.mapSize.width = 2048
+    directional.shadow.mapSize.height = 2048
+    directional.shadow.camera.near = 0.5
+    directional.shadow.camera.far = 100
+    directional.shadow.camera.left = -30
+    directional.shadow.camera.right = 30
+    directional.shadow.camera.top = 30
+    directional.shadow.camera.bottom = -30
     this.scene.add(directional)
   }
 
@@ -113,10 +119,11 @@ export class Game {
     this.scene.add(gridHelper)
 
     const groundGeo = new THREE.PlaneGeometry(50, 50)
-    const groundMat = new THREE.MeshBasicMaterial({ color: 0x222233 })
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0x222233 })
     const ground = new THREE.Mesh(groundGeo, groundMat)
     ground.rotation.x = -Math.PI / 2
     ground.position.y = -0.01
+    ground.receiveShadow = true
     this.scene.add(ground)
   }
 
@@ -174,12 +181,7 @@ export class Game {
   private handleResize(): void {
     window.addEventListener('resize', () => {
       const aspect = window.innerWidth / window.innerHeight
-      const viewSize = 20
-
-      this.camera.left = -viewSize * aspect
-      this.camera.right = viewSize * aspect
-      this.camera.top = viewSize
-      this.camera.bottom = -viewSize
+      this.camera.aspect = aspect
       this.camera.updateProjectionMatrix()
 
       this.renderer.setSize(window.innerWidth, window.innerHeight)

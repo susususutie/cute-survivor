@@ -33,6 +33,7 @@ export class Enemy {
     const geo = new THREE.BoxGeometry(1, 1.2, 1)
     const mat = new THREE.MeshStandardMaterial({ color: config.color })
     this.mesh = new THREE.Mesh(geo, mat)
+    this.mesh.castShadow = true
     this.mesh.position.copy(spawnPos)
     this.mesh.position.y = 0.6
 
