@@ -12,6 +12,7 @@ export interface Rock {
   x: number
   z: number
   radius: number
+  height: number
 }
 
 export class Player {
@@ -26,76 +27,126 @@ export class Player {
   constructor() {
     this.mesh = new THREE.Group()
     
-    const bodyGeo = new THREE.CylinderGeometry(0.35, 0.45, 1.2, 8)
+    const bodyGeo = new THREE.CylinderGeometry(0.32, 0.4, 1.1, 12)
     const bodyMat = new THREE.MeshStandardMaterial({ 
-      color: 0x3a7dcc,
-      roughness: 0.4,
-      metalness: 0.2
+      color: 0x2a5a8a,
+      roughness: 0.35,
+      metalness: 0.3
     })
     const body = new THREE.Mesh(bodyGeo, bodyMat)
     body.castShadow = true
-    body.position.y = 0.6
+    body.position.y = 0.55
     this.mesh.add(body)
     
-    const headGeo = new THREE.SphereGeometry(0.28, 16, 12)
-    const headMat = new THREE.MeshStandardMaterial({ 
-      color: 0xffe4c4,
-      roughness: 0.6
+    const armorGeo = new THREE.BoxGeometry(0.5, 0.6, 0.35)
+    const armorMat = new THREE.MeshStandardMaterial({ 
+      color: 0x4a7aaa,
+      roughness: 0.25,
+      metalness: 0.5
     })
-    const head = new THREE.Mesh(headGeo, headMat)
-    head.castShadow = true
-    head.position.y = 1.35
-    this.mesh.add(head)
+    const armor = new THREE.Mesh(armorGeo, armorMat)
+    armor.position.set(0, 0.5, 0.15)
+    armor.castShadow = true
+    this.mesh.add(armor)
     
-    const eyeGeo = new THREE.SphereGeometry(0.06, 8, 8)
-    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x222222 })
-    const eyeL = new THREE.Mesh(eyeGeo, eyeMat)
-    eyeL.position.set(-0.1, 1.38, 0.22)
-    this.mesh.add(eyeL)
-    const eyeR = new THREE.Mesh(eyeGeo, eyeMat)
-    eyeR.position.set(0.1, 1.38, 0.22)
-    this.mesh.add(eyeR)
-    
-    const gunBodyGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.5, 8)
-    const gunMat = new THREE.MeshStandardMaterial({ 
-      color: 0x2a2a3a,
+    const helmetGeo = new THREE.SphereGeometry(0.26, 16, 12)
+    const helmetMat = new THREE.MeshStandardMaterial({ 
+      color: 0x5a6a7a,
       roughness: 0.3,
       metalness: 0.6
     })
+    const helmet = new THREE.Mesh(helmetGeo, helmetMat)
+    helmet.castShadow = true
+    helmet.position.y = 1.25
+    this.mesh.add(helmet)
+    
+    const visorGeo = new THREE.BoxGeometry(0.35, 0.1, 0.15)
+    const visorMat = new THREE.MeshStandardMaterial({ 
+      color: 0x222233,
+      roughness: 0.1,
+      metalness: 0.8,
+      emissive: 0x44aaff,
+      emissiveIntensity: 0.3
+    })
+    const visor = new THREE.Mesh(visorGeo, visorMat)
+    visor.position.set(0, 1.25, 0.2)
+    this.mesh.add(visor)
+    
+    const shoulderGeo = new THREE.SphereGeometry(0.12, 8, 8)
+    const shoulderMat = new THREE.MeshStandardMaterial({ 
+      color: 0x3a5a6a,
+      roughness: 0.4,
+      metalness: 0.5
+    })
+    const shoulderL = new THREE.Mesh(shoulderGeo, shoulderMat)
+    shoulderL.position.set(-0.4, 0.9, 0)
+    shoulderL.castShadow = true
+    this.mesh.add(shoulderL)
+    const shoulderR = new THREE.Mesh(shoulderGeo, shoulderMat)
+    shoulderR.position.set(0.4, 0.9, 0)
+    shoulderR.castShadow = true
+    this.mesh.add(shoulderR)
+    
+    const gunMat = new THREE.MeshStandardMaterial({ 
+      color: 0x1a1a2a,
+      roughness: 0.2,
+      metalness: 0.8
+    })
+    
+    const gunBodyGeo = new THREE.BoxGeometry(0.12, 0.15, 0.6)
     const gunBody = new THREE.Mesh(gunBodyGeo, gunMat)
-    gunBody.rotation.x = Math.PI / 2
-    gunBody.position.set(0, 0.7, 0.35)
+    gunBody.position.set(0, 0.65, 0.4)
     gunBody.castShadow = true
     this.mesh.add(gunBody)
     
-    const barrelGeo = new THREE.CylinderGeometry(0.04, 0.06, 0.25, 8)
+    const barrelGeo = new THREE.CylinderGeometry(0.03, 0.04, 0.5, 8)
     const barrel = new THREE.Mesh(barrelGeo, gunMat)
     barrel.rotation.x = Math.PI / 2
-    barrel.position.set(0, 0.7, 0.65)
+    barrel.position.set(0, 0.65, 0.75)
     barrel.castShadow = true
     this.mesh.add(barrel)
     
-    const muzzleGeo = new THREE.SphereGeometry(0.05, 8, 8)
-    const muzzleMat = new THREE.MeshBasicMaterial({ color: 0xffff88 })
+    const muzzleGeo = new THREE.CylinderGeometry(0.05, 0.03, 0.08, 8)
+    const muzzleMat = new THREE.MeshBasicMaterial({ color: 0xffffaa })
     const muzzle = new THREE.Mesh(muzzleGeo, muzzleMat)
-    muzzle.position.set(0, 0.7, 0.8)
+    muzzle.rotation.x = Math.PI / 2
+    muzzle.position.set(0, 0.65, 1.02)
     this.mesh.add(muzzle)
     
-    const legGeo = new THREE.CylinderGeometry(0.12, 0.1, 0.4, 8)
-    const legMat = new THREE.MeshStandardMaterial({ color: 0x2a4a6a })
+    const glowGeo = new THREE.SphereGeometry(0.04, 8, 8)
+    const glowMat = new THREE.MeshBasicMaterial({ 
+      color: 0x44aaff,
+      transparent: true,
+      opacity: 0.8
+    })
+    const glow = new THREE.Mesh(glowGeo, glowMat)
+    glow.position.set(0, 0.65, 1.05)
+    this.mesh.add(glow)
+    
+    const legGeo = new THREE.CylinderGeometry(0.1, 0.08, 0.35, 8)
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x2a3a4a })
     const legL = new THREE.Mesh(legGeo, legMat)
-    legL.position.set(-0.15, 0.2, 0)
+    legL.position.set(-0.12, 0.18, 0)
     legL.castShadow = true
     this.mesh.add(legL)
     const legR = new THREE.Mesh(legGeo, legMat)
-    legR.position.set(0.15, 0.2, 0)
+    legR.position.set(0.12, 0.18, 0)
     legR.castShadow = true
     this.mesh.add(legR)
     
-    const packGeo = new THREE.BoxGeometry(0.3, 0.35, 0.15)
-    const packMat = new THREE.MeshStandardMaterial({ color: 0x4a6a8a, roughness: 0.7 })
+    const bootGeo = new THREE.BoxGeometry(0.12, 0.1, 0.18)
+    const bootMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a })
+    const bootL = new THREE.Mesh(bootGeo, bootMat)
+    bootL.position.set(-0.12, 0.05, 0.02)
+    this.mesh.add(bootL)
+    const bootR = new THREE.Mesh(bootGeo, bootMat)
+    bootR.position.set(0.12, 0.05, 0.02)
+    this.mesh.add(bootR)
+    
+    const packGeo = new THREE.BoxGeometry(0.35, 0.4, 0.18)
+    const packMat = new THREE.MeshStandardMaterial({ color: 0x3a4a5a, roughness: 0.8 })
     const pack = new THREE.Mesh(packGeo, packMat)
-    pack.position.set(0, 0.8, -0.25)
+    pack.position.set(0, 0.75, -0.28)
     pack.castShadow = true
     this.mesh.add(pack)
 

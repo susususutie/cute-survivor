@@ -1,8 +1,8 @@
 import * as THREE from 'three'
-import { Player } from '../entities/Player'
+import { Player, Rock as PlayerRock } from '../entities/Player'
 import { BulletManager, Bullet } from '../systems/BulletSystem'
-import { EnemyManager, EnemyConfig, Enemy } from '../entities/Enemy'
-import { MapGenerator, MapData } from '../systems/MapGenerator'
+import { EnemyManager, EnemyConfig, EnemyType, Rock as EnemyRock } from '../entities/Enemy'
+import { MapGenerator, MapData, TerrainHeight, Vegetation } from '../systems/MapGenerator'
 import { ItemManager, ItemType, ItemData } from '../systems/ItemSystem'
 import { UIManager } from '../systems/UIManager'
 import { AudioManager } from '../systems/AudioManager'
@@ -31,6 +31,11 @@ export class Game {
   private ores = 0
   private isPaused = false
   private isGameOver = false
+  private terrainChunks: Map<string, THREE.Group> = new Map()
+  private currentChunkX = 0
+  private currentChunkZ = 0
+  private chunkSize = 24
+  private loadDistance = 1
 
   constructor() {
     this.scene = new THREE.Scene()
@@ -62,10 +67,10 @@ export class Game {
     this.createLights()
     this.createGround()
     this.createPlayer()
-    this.createMapObjects()
     this.bulletManager = new BulletManager(this.scene)
     this.enemyManager = new EnemyManager(this.scene)
     this.itemManager = new ItemManager(this.scene)
+    this.createMapObjects()
     this.spawnInitialEnemies()
     this.handleInput()
     this.handleResize()
@@ -87,9 +92,26 @@ export class Game {
       const mesh = new THREE.Mesh(geo, mat)
       mesh.castShadow = true
       mesh.receiveShadow = true
-      mesh.position.set(rock.x, rock.radius * 0.5, rock.z)
+      mesh.position.set(rock.x, rock.height * 0.5, rock.z)
+      mesh.scale.y = rock.height / rock.radius
       this.scene.add(mesh)
       rockMeshes.push(mesh)
+    }
+
+    for (const veg of this.mapData.vegetation) {
+      this.createVegetationMesh(veg)
+    }
+
+    for (const t of this.mapData.terrain) {
+      const geo = new THREE.CylinderGeometry(2, 3, t.height + 0.5, 8)
+      const mat = new THREE.MeshStandardMaterial({ 
+        color: t.height > 0.5 ? 0x3a5a3a : 0x4a6a4a,
+        roughness: 0.9
+      })
+      const mesh = new THREE.Mesh(geo, mat)
+      mesh.position.set(t.x, t.height / 2, t.z)
+      mesh.receiveShadow = true
+      this.scene.add(mesh)
     }
 
     for (const res of this.mapData.resources) {
@@ -104,6 +126,208 @@ export class Game {
     
     this.player.setRocks(this.mapData.rocks)
     this.player.setRockMeshes(rockMeshes)
+    
+    this.updateTerrainChunks()
+  }
+
+  private updateTerrainChunks(): void {
+    const key = `${this.currentChunkX},${this.currentChunkZ}`
+    
+    if (this.terrainChunks.has(key)) return
+    
+    const chunkData = this.mapGenerator.generateChunk(this.currentChunkX, this.currentChunkZ)
+    const chunkGroup = new THREE.Group()
+    chunkGroup.name = `chunk_${key}`
+    
+    for (const rock of chunkData.rocks) {
+      const geo = new THREE.DodecahedronGeometry(rock.radius, 0)
+      const mat = new THREE.MeshStandardMaterial({ color: 0x666688, roughness: 0.8 })
+      const mesh = new THREE.Mesh(geo, mat)
+      mesh.castShadow = true
+      mesh.receiveShadow = true
+      mesh.position.set(rock.x, rock.height * 0.5, rock.z)
+      mesh.scale.y = rock.height / rock.radius
+      chunkGroup.add(mesh)
+    }
+    
+    for (const veg of chunkData.vegetation) {
+      this.createVegetationMeshInChunk(veg, chunkGroup)
+    }
+    
+    for (const res of chunkData.resources) {
+      const geo = new THREE.OctahedronGeometry(0.3, 0)
+      const color = res.type === 'herb' ? 0x44ff88 : 0x8888ff
+      const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.3 })
+      const mesh = new THREE.Mesh(geo, mat)
+      mesh.castShadow = true
+      mesh.position.set(res.x, 0.5, res.z)
+      chunkGroup.add(mesh)
+    }
+    
+    this.scene.add(chunkGroup)
+    this.terrainChunks.set(key, chunkGroup)
+    
+    const allRocks = [...this.mapData.rocks, ...this.getAllChunkRocks()]
+    this.player.setRocks(allRocks)
+    this.enemyManager.setRocks(allRocks)
+    
+    this.cleanupDistantChunks()
+  }
+
+  private getAllChunkRocks(): { x: number; z: number; radius: number; height: number }[] {
+    const rocks: { x: number; z: number; radius: number; height: number }[] = []
+    for (const [, chunk] of this.terrainChunks) {
+      chunk.traverse((obj) => {
+        if (obj instanceof THREE.Mesh && obj.geometry instanceof THREE.DodecahedronGeometry) {
+          rocks.push({
+            x: obj.position.x,
+            z: obj.position.z,
+            radius: 0.6,
+            height: 1
+          })
+        }
+      })
+    }
+    return rocks
+  }
+
+  private createVegetationMeshInChunk(veg: Vegetation, parent: THREE.Group): void {
+    switch (veg.type) {
+      case 'tree':
+        const trunkGeo = new THREE.CylinderGeometry(0.1 * veg.scale, 0.15 * veg.scale, 1 * veg.scale, 8)
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3520, roughness: 0.9 })
+        const trunk = new THREE.Mesh(trunkGeo, trunkMat)
+        trunk.position.set(veg.x, 0.5 * veg.scale, veg.z)
+        trunk.castShadow = true
+        parent.add(trunk)
+        
+        const leavesGeo = new THREE.SphereGeometry(0.6 * veg.scale, 8, 6)
+        const leavesMat = new THREE.MeshStandardMaterial({ color: 0x2a5a2a, roughness: 0.8 })
+        const leaves = new THREE.Mesh(leavesGeo, leavesMat)
+        leaves.position.set(veg.x, 1.2 * veg.scale, veg.z)
+        leaves.castShadow = true
+        parent.add(leaves)
+        break
+        
+      case 'grass':
+        const grassGeo = new THREE.ConeGeometry(0.15 * veg.scale, 0.5 * veg.scale, 4)
+        const grassMat = new THREE.MeshStandardMaterial({ color: 0x4a8a4a })
+        const grass = new THREE.Mesh(grassGeo, grassMat)
+        grass.position.set(veg.x, 0.25 * veg.scale, veg.z)
+        parent.add(grass)
+        break
+        
+      case 'flower':
+        const stemGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.3 * veg.scale, 4)
+        const stemMat = new THREE.MeshStandardMaterial({ color: 0x3a5a3a })
+        const stem = new THREE.Mesh(stemGeo, stemMat)
+        stem.position.set(veg.x, 0.15 * veg.scale, veg.z)
+        parent.add(stem)
+        
+        const petalGeo = new THREE.SphereGeometry(0.1 * veg.scale, 6, 6)
+        const petalMat = new THREE.MeshStandardMaterial({ 
+          color: Math.random() > 0.5 ? 0xff66aa : 0xffaa66,
+          emissive: 0xff6688,
+          emissiveIntensity: 0.2
+        })
+        const petal = new THREE.Mesh(petalGeo, petalMat)
+        petal.position.set(veg.x, 0.35 * veg.scale, veg.z)
+        parent.add(petal)
+        break
+        
+      case 'bush':
+        const bushGeo = new THREE.SphereGeometry(0.4 * veg.scale, 8, 6)
+        const bushMat = new THREE.MeshStandardMaterial({ color: 0x3a6a3a, roughness: 0.9 })
+        const bush = new THREE.Mesh(bushGeo, bushMat)
+        bush.position.set(veg.x, 0.25 * veg.scale, veg.z)
+        bush.scale.set(1.2, 0.8, 1.2)
+        bush.castShadow = true
+        parent.add(bush)
+        break
+    }
+  }
+
+  private cleanupDistantChunks(): void {
+    const toRemove: string[] = []
+    for (const [key] of this.terrainChunks) {
+      const [cx, cz] = key.split(',').map(Number)
+      const dx = Math.abs(cx - this.currentChunkX)
+      const dz = Math.abs(cz - this.currentChunkZ)
+      if (dx > this.loadDistance + 1 || dz > this.loadDistance + 1) {
+        toRemove.push(key)
+      }
+    }
+    for (const key of toRemove) {
+      const chunk = this.terrainChunks.get(key)
+      if (chunk) {
+        this.scene.remove(chunk)
+        chunk.traverse((obj) => {
+          if (obj instanceof THREE.Mesh) {
+            obj.geometry.dispose()
+            if (obj.material instanceof THREE.Material) {
+              obj.material.dispose()
+            }
+          }
+        })
+      }
+      this.terrainChunks.delete(key)
+    }
+  }
+
+  private createVegetationMesh(veg: Vegetation): void {
+    switch (veg.type) {
+      case 'tree':
+        const trunkGeo = new THREE.CylinderGeometry(0.1 * veg.scale, 0.15 * veg.scale, 1 * veg.scale, 8)
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3520, roughness: 0.9 })
+        const trunk = new THREE.Mesh(trunkGeo, trunkMat)
+        trunk.position.set(veg.x, 0.5 * veg.scale, veg.z)
+        trunk.castShadow = true
+        this.scene.add(trunk)
+        
+        const leavesGeo = new THREE.SphereGeometry(0.6 * veg.scale, 8, 6)
+        const leavesMat = new THREE.MeshStandardMaterial({ color: 0x2a5a2a, roughness: 0.8 })
+        const leaves = new THREE.Mesh(leavesGeo, leavesMat)
+        leaves.position.set(veg.x, 1.2 * veg.scale, veg.z)
+        leaves.castShadow = true
+        this.scene.add(leaves)
+        break
+        
+      case 'grass':
+        const grassGeo = new THREE.ConeGeometry(0.15 * veg.scale, 0.5 * veg.scale, 4)
+        const grassMat = new THREE.MeshStandardMaterial({ color: 0x4a8a4a })
+        const grass = new THREE.Mesh(grassGeo, grassMat)
+        grass.position.set(veg.x, 0.25 * veg.scale, veg.z)
+        this.scene.add(grass)
+        break
+        
+      case 'flower':
+        const stemGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.3 * veg.scale, 4)
+        const stemMat = new THREE.MeshStandardMaterial({ color: 0x3a5a3a })
+        const stem = new THREE.Mesh(stemGeo, stemMat)
+        stem.position.set(veg.x, 0.15 * veg.scale, veg.z)
+        this.scene.add(stem)
+        
+        const petalGeo = new THREE.SphereGeometry(0.1 * veg.scale, 6, 6)
+        const petalMat = new THREE.MeshStandardMaterial({ 
+          color: Math.random() > 0.5 ? 0xff66aa : 0xffaa66,
+          emissive: 0xff6688,
+          emissiveIntensity: 0.2
+        })
+        const petal = new THREE.Mesh(petalGeo, petalMat)
+        petal.position.set(veg.x, 0.35 * veg.scale, veg.z)
+        this.scene.add(petal)
+        break
+        
+      case 'bush':
+        const bushGeo = new THREE.SphereGeometry(0.4 * veg.scale, 8, 6)
+        const bushMat = new THREE.MeshStandardMaterial({ color: 0x3a6a3a, roughness: 0.9 })
+        const bush = new THREE.Mesh(bushGeo, bushMat)
+        bush.position.set(veg.x, 0.25 * veg.scale, veg.z)
+        bush.scale.set(1.2, 0.8, 1.2)
+        bush.castShadow = true
+        this.scene.add(bush)
+        break
+    }
   }
 
   private createLights(): void {
@@ -143,17 +367,32 @@ export class Game {
   }
 
   private spawnInitialEnemies(): void {
-    const basicConfig: EnemyConfig = {
-      hp: 50,
-      speed: 3,
-      damage: 10,
-      detectRange: 15,
-      attackRange: 1.5,
-      color: 0xff6644
+    const enemyTypes: EnemyType[] = [EnemyType.Goblin, EnemyType.Orc, EnemyType.Slime, EnemyType.Bat]
+    const colors: Record<EnemyType, number> = {
+      [EnemyType.Goblin]: 0x44aa44,
+      [EnemyType.Orc]: 0x665533,
+      [EnemyType.Slime]: 0x44ff88,
+      [EnemyType.Bat]: 0x443366
+    }
+    const stats: Record<EnemyType, { hp: number; speed: number; damage: number; detectRange: number; attackRange: number }> = {
+      [EnemyType.Goblin]: { hp: 40, speed: 3.5, damage: 8, detectRange: 12, attackRange: 1.2 },
+      [EnemyType.Orc]: { hp: 80, speed: 2, damage: 15, detectRange: 10, attackRange: 1.5 },
+      [EnemyType.Slime]: { hp: 30, speed: 2.5, damage: 5, detectRange: 8, attackRange: 1 },
+      [EnemyType.Bat]: { hp: 20, speed: 5, damage: 4, detectRange: 15, attackRange: 0.8 }
     }
 
     for (let i = 0; i < 5; i++) {
-      this.enemyManager.spawn(basicConfig, this.bounds)
+      const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)]
+      const config: EnemyConfig = {
+        type,
+        hp: stats[type].hp,
+        speed: stats[type].speed,
+        damage: stats[type].damage,
+        detectRange: stats[type].detectRange,
+        attackRange: stats[type].attackRange,
+        color: colors[type]
+      }
+      this.enemyManager.spawn(config, this.bounds, this.mapData.rocks)
     }
   }
 
@@ -392,6 +631,15 @@ export class Game {
   }
 
   private update(delta: number): void {
+    const px = Math.floor(this.player.mesh.position.x / this.chunkSize)
+    const pz = Math.floor(this.player.mesh.position.z / this.chunkSize)
+    
+    if (px !== this.currentChunkX || pz !== this.currentChunkZ) {
+      this.currentChunkX = px
+      this.currentChunkZ = pz
+      this.updateTerrainChunks()
+    }
+    
     this.player.update(delta, this.camera, this.bounds)
     this.bulletManager.update(delta)
     this.enemyManager.update(delta, this.player.mesh.position)
@@ -415,15 +663,30 @@ export class Game {
     this.enemySpawnTimer += delta
     if (this.enemySpawnTimer >= 3) {
       this.enemySpawnTimer = 0
-      const config: EnemyConfig = {
-        hp: 50,
-        speed: 3,
-        damage: 10,
-        detectRange: 15,
-        attackRange: 1.5,
-        color: 0xff6644
+      const enemyTypes: EnemyType[] = [EnemyType.Goblin, EnemyType.Orc, EnemyType.Slime, EnemyType.Bat]
+      const colors: Record<EnemyType, number> = {
+        [EnemyType.Goblin]: 0x44aa44,
+        [EnemyType.Orc]: 0x665533,
+        [EnemyType.Slime]: 0x44ff88,
+        [EnemyType.Bat]: 0x443366
       }
-      this.enemyManager.spawn(config, this.bounds)
+      const stats: Record<EnemyType, { hp: number; speed: number; damage: number; detectRange: number; attackRange: number }> = {
+        [EnemyType.Goblin]: { hp: 40, speed: 3.5, damage: 8, detectRange: 12, attackRange: 1.2 },
+        [EnemyType.Orc]: { hp: 80, speed: 2, damage: 15, detectRange: 10, attackRange: 1.5 },
+        [EnemyType.Slime]: { hp: 30, speed: 2.5, damage: 5, detectRange: 8, attackRange: 1 },
+        [EnemyType.Bat]: { hp: 20, speed: 5, damage: 4, detectRange: 15, attackRange: 0.8 }
+      }
+      const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)]
+      const config: EnemyConfig = {
+        type,
+        hp: stats[type].hp,
+        speed: stats[type].speed,
+        damage: stats[type].damage,
+        detectRange: stats[type].detectRange,
+        attackRange: stats[type].attackRange,
+        color: colors[type]
+      }
+      this.enemyManager.spawn(config, this.bounds, this.mapData.rocks)
     }
   }
 }
