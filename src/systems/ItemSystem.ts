@@ -157,7 +157,7 @@ export class ItemManager {
   }
 
   getItemsInRange(position: THREE.Vector3, range: number): Item[] {
-    return this.items.filter(item => item.getPosition().distanceTo(position) < range)
+    return this.items.filter((item) => item.getPosition().distanceTo(position) < range)
   }
 
   collectItemsInRange(position: THREE.Vector3, range: number): ItemData[] {

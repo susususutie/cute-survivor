@@ -33,7 +33,7 @@ export class Bullet {
     })
     this.trail = new THREE.Points(trailGeo, trailMat)
     this.trail.frustumCulled = false
-    
+
     this.state = {
       damage: 25,
       speed: 20,

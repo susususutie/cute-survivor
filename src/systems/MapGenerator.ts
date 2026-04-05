@@ -83,18 +83,18 @@ export class MapGenerator {
   generateChunk(chunkX: number, chunkZ: number): MapData {
     const chunkSeed = this.rng.seed + chunkX * 73856093 + chunkZ * 19349663
     const chunkRng = new SeededRandom(chunkSeed)
-    
+
     const rocks = this.generateRocksInChunk(chunkX, chunkZ, chunkRng, 8)
     const terrain = this.generateTerrainInChunk(chunkX, chunkZ, chunkRng, 6)
     const vegetation = this.generateVegetationInChunk(chunkX, chunkZ, chunkRng, 15)
     const resources = this.generateResourcesInChunk(chunkX, chunkZ, chunkRng, 5)
-    
-    return { 
-      rocks, 
-      terrain, 
-      vegetation, 
-      resources, 
-      playerSpawn: { x: 0, z: 0 } 
+
+    return {
+      rocks,
+      terrain,
+      vegetation,
+      resources,
+      playerSpawn: { x: 0, z: 0 }
     }
   }
 
@@ -126,7 +126,12 @@ export class MapGenerator {
     return rocks
   }
 
-  private generateRocksInChunk(chunkX: number, chunkZ: number, rng: SeededRandom, count: number): Rock[] {
+  private generateRocksInChunk(
+    chunkX: number,
+    chunkZ: number,
+    rng: SeededRandom,
+    count: number
+  ): Rock[] {
     const rocks: Rock[] = []
     const offsetX = chunkX * this.chunkSize
     const offsetZ = chunkZ * this.chunkSize
@@ -158,7 +163,7 @@ export class MapGenerator {
 
   private generateTerrain(count: number): TerrainHeight[] {
     const terrain: TerrainHeight[] = []
-    
+
     for (let i = 0; i < count; i++) {
       const x = this.rng.nextInt(-this.bounds, this.bounds)
       const z = this.rng.nextInt(-this.bounds, this.bounds)
@@ -168,11 +173,16 @@ export class MapGenerator {
     return terrain
   }
 
-  private generateTerrainInChunk(chunkX: number, chunkZ: number, rng: SeededRandom, count: number): TerrainHeight[] {
+  private generateTerrainInChunk(
+    chunkX: number,
+    chunkZ: number,
+    rng: SeededRandom,
+    count: number
+  ): TerrainHeight[] {
     const terrain: TerrainHeight[] = []
     const offsetX = chunkX * this.chunkSize
     const offsetZ = chunkZ * this.chunkSize
-    
+
     for (let i = 0; i < count; i++) {
       const x = offsetX + rng.nextInt(-this.chunkSize / 2, this.chunkSize / 2)
       const z = offsetZ + rng.nextInt(-this.chunkSize / 2, this.chunkSize / 2)
@@ -197,7 +207,12 @@ export class MapGenerator {
     return vegetation
   }
 
-  private generateVegetationInChunk(chunkX: number, chunkZ: number, rng: SeededRandom, count: number): Vegetation[] {
+  private generateVegetationInChunk(
+    chunkX: number,
+    chunkZ: number,
+    rng: SeededRandom,
+    count: number
+  ): Vegetation[] {
     const vegetation: Vegetation[] = []
     const types: ('tree' | 'grass' | 'flower' | 'bush')[] = ['tree', 'grass', 'flower', 'bush']
     const offsetX = chunkX * this.chunkSize
@@ -231,7 +246,12 @@ export class MapGenerator {
     return resources
   }
 
-  private generateResourcesInChunk(chunkX: number, chunkZ: number, rng: SeededRandom, count: number): ResourcePoint[] {
+  private generateResourcesInChunk(
+    chunkX: number,
+    chunkZ: number,
+    rng: SeededRandom,
+    count: number
+  ): ResourcePoint[] {
     const resources: ResourcePoint[] = []
     const offsetX = chunkX * this.chunkSize
     const offsetZ = chunkZ * this.chunkSize

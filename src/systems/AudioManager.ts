@@ -1,5 +1,3 @@
-import * as THREE from 'three'
-
 export class AudioManager {
   private audioContext: AudioContext | null = null
   private bgmGain: GainNode | null = null
@@ -12,12 +10,19 @@ export class AudioManager {
   }
 
   private initContext(): void {
-    document.addEventListener('click', () => {
-      if (!this.audioContext) {
-        this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-        this.createMixer()
-      }
-    }, { once: true })
+    document.addEventListener(
+      'click',
+      () => {
+        if (!this.audioContext) {
+          this.audioContext = new (
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+          )()
+          this.createMixer()
+        }
+      },
+      { once: true }
+    )
   }
 
   private createMixer(): void {

@@ -1,12 +1,9 @@
-import * as THREE from 'three'
-
 export class UIManager {
-  private hud: HTMLElement
   private pauseMenu: HTMLElement
   private gameOverScreen: HTMLElement
 
   constructor() {
-    this.hud = this.createHUD()
+    this.createHUD()
     this.pauseMenu = this.createPauseMenu()
     this.gameOverScreen = this.createGameOverScreen()
   }
@@ -173,22 +170,30 @@ export class UIManager {
     document.head.appendChild(style)
   }
 
-  updateStats(hp: number, maxHp: number, ammo: number, maxAmmo: number, gold: number, herbs: number, ores: number): void {
-    const hpBar = document.getElementById('hp-bar') as HTMLElement
-    const hpValue = document.getElementById('hp-value') as HTMLElement
-    const ammoBar = document.getElementById('ammo-bar') as HTMLElement
-    const ammoValue = document.getElementById('ammo-value') as HTMLElement
-    const goldValue = document.getElementById('gold-value') as HTMLElement
-    const herbValue = document.getElementById('herb-value') as HTMLElement
-    const oreValue = document.getElementById('ore-value') as HTMLElement
+  updateStats(
+    hp: number,
+    maxHp: number,
+    ammo: number,
+    maxAmmo: number,
+    gold: number,
+    herbs: number,
+    ores: number
+  ): void {
+    const hpBar = document.getElementById('hp-bar')!
+    const hpValue = document.getElementById('hp-value')!
+    const ammoBar = document.getElementById('ammo-bar')!
+    const ammoValue = document.getElementById('ammo-value')!
+    const goldValue = document.getElementById('gold-value')!
+    const herbValue = document.getElementById('herb-value')!
+    const oreValue = document.getElementById('ore-value')!
 
-    if (hpBar) hpBar.style.width = `${(hp / maxHp) * 100}%`
-    if (hpValue) hpValue.textContent = String(Math.max(0, hp))
-    if (ammoBar) ammoBar.style.width = `${(ammo / maxAmmo) * 100}%`
-    if (ammoValue) ammoValue.textContent = String(ammo)
-    if (goldValue) goldValue.textContent = String(gold)
-    if (herbValue) herbValue.textContent = String(herbs)
-    if (oreValue) oreValue.textContent = String(ores)
+    hpBar.style.width = `${(hp / maxHp) * 100}%`
+    hpValue.textContent = String(Math.max(0, hp))
+    ammoBar.style.width = `${(ammo / maxAmmo) * 100}%`
+    ammoValue.textContent = String(ammo)
+    goldValue.textContent = String(gold)
+    herbValue.textContent = String(herbs)
+    oreValue.textContent = String(ores)
   }
 
   showPauseMenu(): void {

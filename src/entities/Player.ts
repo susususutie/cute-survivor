@@ -22,16 +22,16 @@ export class Player {
   private glowMesh!: THREE.Mesh
   private animTime = 0
 
-  private keys: Set<string> = new Set()
+  private keys = new Set<string>()
   private mousePos: THREE.Vector2 = new THREE.Vector2()
   private rocks: Rock[] = []
   private colliderRadius = 0.6
 
   constructor() {
     this.mesh = new THREE.Group()
-    
+
     const bodyGeo = new THREE.CylinderGeometry(0.32, 0.4, 1.1, 12)
-    const bodyMat = new THREE.MeshStandardMaterial({ 
+    const bodyMat = new THREE.MeshStandardMaterial({
       color: 0x2a5a8a,
       roughness: 0.35,
       metalness: 0.3
@@ -40,9 +40,9 @@ export class Player {
     body.castShadow = true
     body.position.y = 0.55
     this.mesh.add(body)
-    
+
     const armorGeo = new THREE.BoxGeometry(0.5, 0.6, 0.35)
-    const armorMat = new THREE.MeshStandardMaterial({ 
+    const armorMat = new THREE.MeshStandardMaterial({
       color: 0x4a7aaa,
       roughness: 0.25,
       metalness: 0.5
@@ -51,9 +51,9 @@ export class Player {
     armor.position.set(0, 0.5, 0.15)
     armor.castShadow = true
     this.mesh.add(armor)
-    
+
     const helmetGeo = new THREE.SphereGeometry(0.26, 16, 12)
-    const helmetMat = new THREE.MeshStandardMaterial({ 
+    const helmetMat = new THREE.MeshStandardMaterial({
       color: 0x5a6a7a,
       roughness: 0.3,
       metalness: 0.6
@@ -62,9 +62,9 @@ export class Player {
     helmet.castShadow = true
     helmet.position.y = 1.25
     this.mesh.add(helmet)
-    
+
     const visorGeo = new THREE.BoxGeometry(0.35, 0.1, 0.15)
-    const visorMat = new THREE.MeshStandardMaterial({ 
+    const visorMat = new THREE.MeshStandardMaterial({
       color: 0x222233,
       roughness: 0.1,
       metalness: 0.8,
@@ -74,9 +74,9 @@ export class Player {
     const visor = new THREE.Mesh(visorGeo, visorMat)
     visor.position.set(0, 1.25, 0.2)
     this.mesh.add(visor)
-    
+
     const visorGlowGeo = new THREE.PlaneGeometry(0.3, 0.06)
-    const visorGlowMat = new THREE.MeshBasicMaterial({ 
+    const visorGlowMat = new THREE.MeshBasicMaterial({
       color: 0x44aaff,
       transparent: true,
       opacity: 0.8
@@ -84,9 +84,9 @@ export class Player {
     const visorGlow = new THREE.Mesh(visorGlowGeo, visorGlowMat)
     visorGlow.position.set(0, 1.25, 0.28)
     this.mesh.add(visorGlow)
-    
+
     const shoulderGeo = new THREE.SphereGeometry(0.12, 8, 8)
-    const shoulderMat = new THREE.MeshStandardMaterial({ 
+    const shoulderMat = new THREE.MeshStandardMaterial({
       color: 0x3a5a6a,
       roughness: 0.4,
       metalness: 0.5
@@ -99,45 +99,48 @@ export class Player {
     shoulderR.position.set(0.4, 0.9, 0)
     shoulderR.castShadow = true
     this.mesh.add(shoulderR)
-    
+
     const shoulderLightGeo = new THREE.SphereGeometry(0.06, 8, 8)
     const shoulderLightMat = new THREE.MeshBasicMaterial({ color: 0xff4444 })
     const shoulderLightL = new THREE.Mesh(shoulderLightGeo, shoulderLightMat)
     shoulderLightL.position.set(-0.4, 0.95, 0.08)
     this.mesh.add(shoulderLightL)
-    const shoulderLightR = new THREE.Mesh(shoulderLightGeo, new THREE.MeshBasicMaterial({ color: 0x44ff44 }))
+    const shoulderLightR = new THREE.Mesh(
+      shoulderLightGeo,
+      new THREE.MeshBasicMaterial({ color: 0x44ff44 })
+    )
     shoulderLightR.position.set(0.4, 0.95, 0.08)
     this.mesh.add(shoulderLightR)
-    
-    const gunMat = new THREE.MeshStandardMaterial({ 
+
+    const gunMat = new THREE.MeshStandardMaterial({
       color: 0x1a1a2a,
       roughness: 0.2,
       metalness: 0.8
     })
-    
+
     const gunGroup = new THREE.Group()
     const gunBodyGeo = new THREE.BoxGeometry(0.12, 0.15, 0.6)
     const gunBody = new THREE.Mesh(gunBodyGeo, gunMat)
     gunBody.position.set(0, 0, 0.3)
     gunBody.castShadow = true
     gunGroup.add(gunBody)
-    
+
     const barrelGeo = new THREE.CylinderGeometry(0.03, 0.04, 0.5, 8)
     const barrel = new THREE.Mesh(barrelGeo, gunMat)
     barrel.rotation.x = Math.PI / 2
     barrel.position.set(0, 0, 0.65)
     barrel.castShadow = true
     gunGroup.add(barrel)
-    
+
     const muzzleGeo = new THREE.CylinderGeometry(0.05, 0.03, 0.08, 8)
     const muzzleMat = new THREE.MeshBasicMaterial({ color: 0xffffaa })
     const muzzle = new THREE.Mesh(muzzleGeo, muzzleMat)
     muzzle.rotation.x = Math.PI / 2
     muzzle.position.set(0, 0, 0.92)
     gunGroup.add(muzzle)
-    
+
     const glowGeo = new THREE.SphereGeometry(0.04, 8, 8)
-    const glowMat = new THREE.MeshBasicMaterial({ 
+    const glowMat = new THREE.MeshBasicMaterial({
       color: 0x44aaff,
       transparent: true,
       opacity: 0.9
@@ -145,9 +148,9 @@ export class Player {
     this.glowMesh = new THREE.Mesh(glowGeo, glowMat)
     this.glowMesh.position.set(0, 0, 0.95)
     gunGroup.add(this.glowMesh)
-    
+
     const energyGeo = new THREE.CylinderGeometry(0.02, 0.015, 0.3, 6)
-    const energyMat = new THREE.MeshStandardMaterial({ 
+    const energyMat = new THREE.MeshStandardMaterial({
       color: 0x44aaff,
       emissive: 0x44aaff,
       emissiveIntensity: 0.8,
@@ -158,17 +161,17 @@ export class Player {
     energy.rotation.x = Math.PI / 2
     energy.position.set(0, 0.06, 0.5)
     gunGroup.add(energy)
-    
+
     gunGroup.position.set(0, 0.65, 0.4)
     this.weapon = gunGroup as unknown as THREE.Mesh
     this.mesh.add(gunGroup)
-    
+
     const beltGeo = new THREE.BoxGeometry(0.45, 0.08, 0.25)
     const beltMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a })
     const belt = new THREE.Mesh(beltGeo, beltMat)
     belt.position.set(0, 0.4, 0.05)
     this.mesh.add(belt)
-    
+
     const holsterGeo = new THREE.BoxGeometry(0.08, 0.2, 0.1)
     const holsterMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a })
     const holsterL = new THREE.Mesh(holsterGeo, holsterMat)
@@ -177,7 +180,7 @@ export class Player {
     const holsterR = new THREE.Mesh(holsterGeo, holsterMat)
     holsterR.position.set(0.2, 0.35, 0.1)
     this.mesh.add(holsterR)
-    
+
     const legGeo = new THREE.CylinderGeometry(0.1, 0.08, 0.35, 8)
     const legMat = new THREE.MeshStandardMaterial({ color: 0x2a3a4a })
     const legL = new THREE.Mesh(legGeo, legMat)
@@ -188,7 +191,7 @@ export class Player {
     legR.position.set(0.12, 0.18, 0)
     legR.castShadow = true
     this.mesh.add(legR)
-    
+
     const bootGeo = new THREE.BoxGeometry(0.12, 0.1, 0.18)
     const bootMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a })
     const bootL = new THREE.Mesh(bootGeo, bootMat)
@@ -197,7 +200,7 @@ export class Player {
     const bootR = new THREE.Mesh(bootGeo, bootMat)
     bootR.position.set(0.12, 0.05, 0.02)
     this.mesh.add(bootR)
-    
+
     const packGeo = new THREE.BoxGeometry(0.35, 0.4, 0.18)
     const packMat = new THREE.MeshStandardMaterial({ color: 0x3a4a5a, roughness: 0.8 })
     const pack = new THREE.Mesh(packGeo, packMat)
@@ -213,13 +216,16 @@ export class Player {
     const antennaR = new THREE.Mesh(antennaGeo, antennaMat)
     antennaR.position.set(0.15, 1.45, -0.1)
     this.mesh.add(antennaR)
-    
+
     const antennaTipGeo = new THREE.SphereGeometry(0.03, 6, 6)
     const antennaTipMat = new THREE.MeshBasicMaterial({ color: 0x44ff44 })
     const antennaTipL = new THREE.Mesh(antennaTipGeo, antennaTipMat)
     antennaTipL.position.set(-0.15, 1.55, -0.1)
     this.mesh.add(antennaTipL)
-    const antennaTipR = new THREE.Mesh(antennaTipGeo, new THREE.MeshBasicMaterial({ color: 0xff4444 }))
+    const antennaTipR = new THREE.Mesh(
+      antennaTipGeo,
+      new THREE.MeshBasicMaterial({ color: 0xff4444 })
+    )
     antennaTipR.position.set(0.15, 1.55, -0.1)
     this.mesh.add(antennaTipR)
 
@@ -238,7 +244,7 @@ export class Player {
 
   updateAnimation(delta: number): void {
     this.animTime += delta
-    
+
     if (this.glowMesh) {
       const pulse = 0.7 + Math.sin(this.animTime * 4) * 0.3
       ;(this.glowMesh.material as THREE.MeshBasicMaterial).opacity = pulse
@@ -248,11 +254,11 @@ export class Player {
   }
 
   triggerRecoil(): void {
-    if (this.weapon && this.weapon.parent) {
+    if (this.weapon?.parent) {
       const weaponGroup = this.weapon.parent as THREE.Group
       const originalZ = 0.4
       weaponGroup.position.z = originalZ + 0.15
-      
+
       setTimeout(() => {
         weaponGroup.position.z = originalZ
       }, 50)
@@ -263,11 +269,9 @@ export class Player {
     this.rocks = rocks
   }
 
-  setRockMeshes(meshes: THREE.Mesh[]): void {
-    this.rockMeshes = meshes
+  setRockMeshes(_meshes: THREE.Mesh[]): void {
+    // Reserved for future rock mesh collision system
   }
-
-  private rockMeshes: THREE.Mesh[] = []
 
   private setupInput(): void {
     window.addEventListener('keydown', (e) => {
@@ -284,9 +288,9 @@ export class Player {
     })
   }
 
-  update(delta: number, camera: THREE.Camera, bounds: number): void {
+  update(delta: number, camera: THREE.Camera, _bounds: number): void {
     this.updateAnimation(delta)
-    
+
     const moveDir = new THREE.Vector3()
 
     if (this.keys.has('w')) moveDir.z -= 1
@@ -321,10 +325,7 @@ export class Player {
     raycaster.ray.intersectPlane(plane, target)
 
     if (target) {
-      const angle = Math.atan2(
-        target.x - this.mesh.position.x,
-        target.z - this.mesh.position.z
-      )
+      const angle = Math.atan2(target.x - this.mesh.position.x, target.z - this.mesh.position.z)
       this.mesh.rotation.y = angle
       this.state.rotation = angle
     }
@@ -344,7 +345,7 @@ export class Player {
   applySpeedBoost(amount: number, duration: number): void {
     const originalSpeed = this.state.speed
     this.state.speed += amount
-    
+
     setTimeout(() => {
       this.state.speed = originalSpeed
     }, duration * 1000)
