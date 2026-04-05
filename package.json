@@ -15,5 +15,6 @@
     "@types/three": "^0.160.0",
     "typescript": "^5.3.3",
     "vite": "^5.0.10"
-  }
+  },
+  "packageManager": "pnpm@10.23.0"
 }
