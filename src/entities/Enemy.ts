@@ -22,6 +22,10 @@ export interface EnemyConfig {
   detectRange: number
   attackRange: number
   color: number
+  hasRangedAttack?: boolean
+  rangedAttackRange?: number
+  rangedAttackDamage?: number
+  rangedAttackCooldown?: number
 }
 
 export interface Rock {
@@ -40,11 +44,25 @@ export class Enemy {
   public state = EnemyState.Patrol
   private detectRange: number
   private attackRange: number
+  private aggroRange: number
+  private leashRange: number
+  private isAggro = false
+  private deaggroTimer = 0
   private patrolTarget: THREE.Vector3
   private attackCooldown = 0
   private rocks: Rock[] = []
   private colliderRadius = 0.5
   private animPhase = 0
+  private hasRangedAttack = false
+  private rangedAttackRange = 0
+  private rangedAttackDamage = 0
+  private rangedAttackCooldown = 0
+  private rangedAttackTimer = 0
+  public onRangedAttack?: (
+    position: THREE.Vector3,
+    direction: THREE.Vector3,
+    damage: number
+  ) => void
 
   constructor(config: EnemyConfig, spawnPos: THREE.Vector3) {
     this.type = config.type
@@ -59,6 +77,13 @@ export class Enemy {
     this.damage = config.damage
     this.detectRange = config.detectRange
     this.attackRange = config.attackRange
+    this.aggroRange = config.detectRange * 1.3
+    this.leashRange = config.detectRange * 2
+
+    this.hasRangedAttack = config.hasRangedAttack ?? false
+    this.rangedAttackRange = config.rangedAttackRange ?? 10
+    this.rangedAttackDamage = config.rangedAttackDamage ?? 10
+    this.rangedAttackCooldown = config.rangedAttackCooldown ?? 2
 
     this.patrolTarget = new THREE.Vector3(
       spawnPos.x + (Math.random() - 0.5) * 10,
@@ -282,6 +307,12 @@ export class Enemy {
     this.rocks = rocks
   }
 
+  setRangedAttackCallback(
+    callback: (position: THREE.Vector3, direction: THREE.Vector3, damage: number) => void
+  ): void {
+    this.onRangedAttack = callback
+  }
+
   update(delta: number, playerPos: THREE.Vector3): void {
     this.animPhase += delta * 3
     this.animate()
@@ -290,11 +321,29 @@ export class Enemy {
 
     if (distToPlayer <= this.attackRange) {
       this.state = EnemyState.Attack
+      this.isAggro = true
+      this.deaggroTimer = 0
       this.handleAttack(delta)
+    } else if (this.hasRangedAttack && distToPlayer <= this.rangedAttackRange && this.isAggro) {
+      this.state = EnemyState.Chase
+      this.handleRangedAttack(delta, playerPos)
     } else if (distToPlayer <= this.detectRange) {
       this.state = EnemyState.Chase
+      this.isAggro = true
+      this.deaggroTimer = 0
       this.chase(playerPos, delta)
-    } else if (this.state === EnemyState.Chase || this.state === EnemyState.Alert) {
+    } else if (this.isAggro && distToPlayer <= this.aggroRange) {
+      this.state = EnemyState.Chase
+      this.deaggroTimer += delta
+      if (this.deaggroTimer >= 3) {
+        this.isAggro = false
+        this.state = EnemyState.Patrol
+        this.patrol(delta)
+      } else {
+        this.chase(playerPos, delta)
+      }
+    } else if (distToPlayer > this.leashRange) {
+      this.isAggro = false
       this.state = EnemyState.Patrol
       this.patrol(delta)
     } else {
@@ -363,6 +412,21 @@ export class Enemy {
     this.attackCooldown -= delta
   }
 
+  private handleRangedAttack(delta: number, playerPos: THREE.Vector3): void {
+    this.rangedAttackTimer -= delta
+    const dir = new THREE.Vector3().subVectors(playerPos, this.mesh.position).setY(0).normalize()
+    this.mesh.lookAt(new THREE.Vector3(playerPos.x, this.mesh.position.y, playerPos.z))
+
+    if (this.rangedAttackTimer <= 0) {
+      const muzzlePos = this.mesh.position.clone().add(dir.clone().multiplyScalar(0.8))
+      muzzlePos.y = 0.6
+      if (this.onRangedAttack) {
+        this.onRangedAttack(muzzlePos, dir, this.rangedAttackDamage)
+      }
+      this.rangedAttackTimer = this.rangedAttackCooldown
+    }
+  }
+
   canAttack(): boolean {
     return this.attackCooldown <= 0
   }
@@ -373,6 +437,8 @@ export class Enemy {
 
   takeDamage(amount: number): boolean {
     this.hp -= amount
+    this.isAggro = true
+    this.deaggroTimer = 0
 
     for (const child of this.mesh.children) {
       if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
@@ -404,10 +470,15 @@ export class EnemyManager {
   }
 
   spawn(config: EnemyConfig, bounds: number, rocks: Rock[] = []): void {
-    const x = (Math.random() - 0.5) * bounds * 1.6
-    const z = (Math.random() - 0.5) * bounds * 1.6
+    let x: number, z: number, distToCenter: number
+    let attempts = 0
+    do {
+      x = (Math.random() - 0.5) * bounds * 1.6
+      z = (Math.random() - 0.5) * bounds * 1.6
+      distToCenter = Math.sqrt(x * x + z * z)
+      attempts++
+    } while (distToCenter < 8 && attempts < 10)
 
-    const distToCenter = Math.sqrt(x * x + z * z)
     if (distToCenter < 8) return
 
     const enemy = new Enemy(config, new THREE.Vector3(x, 0, z))
@@ -428,9 +499,30 @@ export class EnemyManager {
     }
   }
 
+  setRangedAttackCallback(
+    callback: (position: THREE.Vector3, direction: THREE.Vector3, damage: number) => void
+  ): void {
+    for (const enemy of this.enemies) {
+      enemy.setRangedAttackCallback(callback)
+    }
+  }
+
   spawnAt(config: EnemyConfig, position: THREE.Vector3, rocks: Rock[]): void {
     const enemy = new Enemy(config, position)
     enemy.setRocks(rocks)
+    this.enemies.push(enemy)
+    this.scene.add(enemy.mesh)
+  }
+
+  spawnAtWithCallback(
+    config: EnemyConfig,
+    position: THREE.Vector3,
+    rocks: Rock[],
+    rangedCallback: (position: THREE.Vector3, direction: THREE.Vector3, damage: number) => void
+  ): void {
+    const enemy = new Enemy(config, position)
+    enemy.setRocks(rocks)
+    enemy.setRangedAttackCallback(rangedCallback)
     this.enemies.push(enemy)
     this.scene.add(enemy.mesh)
   }

@@ -4,6 +4,7 @@ export interface BulletState {
   damage: number
   speed: number
   lifetime: number
+  maxRange: number
   position: THREE.Vector3
   direction: THREE.Vector3
 }
@@ -12,10 +13,11 @@ export class Bullet {
   public mesh: THREE.Mesh
   public state: BulletState
   private age = 0
+  private distanceTraveled = 0
   private trail: THREE.Points
   private trailPositions: THREE.Vector3[] = []
 
-  constructor(position: THREE.Vector3, direction: THREE.Vector3) {
+  constructor(position: THREE.Vector3, direction: THREE.Vector3, maxRange: number) {
     const geo = new THREE.SphereGeometry(0.12, 8, 8)
     const mat = new THREE.MeshBasicMaterial({ color: 0xffff00 })
     this.mesh = new THREE.Mesh(geo, mat)
@@ -38,13 +40,16 @@ export class Bullet {
       damage: 25,
       speed: 20,
       lifetime: 3,
+      maxRange,
       position: this.mesh.position.clone(),
       direction: direction.clone()
     }
   }
 
   update(delta: number): boolean {
-    this.mesh.position.addScaledVector(this.state.direction, this.state.speed * delta)
+    const moveDistance = this.state.speed * delta
+    this.mesh.position.addScaledVector(this.state.direction, moveDistance)
+    this.distanceTraveled += moveDistance
     this.state.position.copy(this.mesh.position)
 
     this.trailPositions.push(this.mesh.position.clone())
@@ -62,7 +67,7 @@ export class Bullet {
     this.trail.geometry.attributes.position.needsUpdate = true
 
     this.age += delta
-    return this.age >= this.state.lifetime
+    return this.age >= this.state.lifetime || this.distanceTraveled >= this.state.maxRange
   }
 
   getPosition(): THREE.Vector3 {
@@ -82,8 +87,8 @@ export class BulletManager {
     this.scene = scene
   }
 
-  fire(position: THREE.Vector3, direction: THREE.Vector3): Bullet {
-    const bullet = new Bullet(position, direction)
+  fire(position: THREE.Vector3, direction: THREE.Vector3, maxRange = 15): Bullet {
+    const bullet = new Bullet(position, direction, maxRange)
     this.bullets.push(bullet)
     this.scene.add(bullet.mesh)
     this.scene.add(bullet.getTrail())

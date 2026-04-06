@@ -16,6 +16,7 @@ export class Game {
   private clock: THREE.Clock
   private player!: Player
   private bulletManager!: BulletManager
+  private enemyBulletManager!: BulletManager
   private enemyManager!: EnemyManager
   private mapGenerator!: MapGenerator
   private mapData!: MapData
@@ -70,6 +71,7 @@ export class Game {
     this.createGround()
     this.createPlayer()
     this.bulletManager = new BulletManager(this.scene)
+    this.enemyBulletManager = new BulletManager(this.scene)
     this.enemyManager = new EnemyManager(this.scene)
     this.itemManager = new ItemManager(this.scene)
     this.createMapObjects()
@@ -435,9 +437,29 @@ export class Game {
     }
     const stats: Record<
       EnemyType,
-      { hp: number; speed: number; damage: number; detectRange: number; attackRange: number }
+      {
+        hp: number
+        speed: number
+        damage: number
+        detectRange: number
+        attackRange: number
+        hasRangedAttack?: boolean
+        rangedAttackRange?: number
+        rangedAttackDamage?: number
+        rangedAttackCooldown?: number
+      }
     > = {
-      [EnemyType.Goblin]: { hp: 40, speed: 3.5, damage: 8, detectRange: 12, attackRange: 1.2 },
+      [EnemyType.Goblin]: {
+        hp: 40,
+        speed: 3.5,
+        damage: 8,
+        detectRange: 12,
+        attackRange: 1.2,
+        hasRangedAttack: true,
+        rangedAttackRange: 12,
+        rangedAttackDamage: 8,
+        rangedAttackCooldown: 2
+      },
       [EnemyType.Orc]: { hp: 80, speed: 2, damage: 15, detectRange: 10, attackRange: 1.5 },
       [EnemyType.Slime]: { hp: 30, speed: 2.5, damage: 5, detectRange: 8, attackRange: 1 },
       [EnemyType.Bat]: { hp: 20, speed: 5, damage: 4, detectRange: 15, attackRange: 0.8 }
@@ -451,7 +473,11 @@ export class Game {
       damage: stats[type].damage,
       detectRange: stats[type].detectRange,
       attackRange: stats[type].attackRange,
-      color: colors[type]
+      color: colors[type],
+      hasRangedAttack: stats[type].hasRangedAttack,
+      rangedAttackRange: stats[type].rangedAttackRange,
+      rangedAttackDamage: stats[type].rangedAttackDamage,
+      rangedAttackCooldown: stats[type].rangedAttackCooldown
     }
 
     const angle = Math.random() * Math.PI * 2
@@ -459,7 +485,12 @@ export class Game {
     const x = playerPos.x + Math.cos(angle) * distance
     const z = playerPos.z + Math.sin(angle) * distance
 
-    this.enemyManager.spawnAt(config, new THREE.Vector3(x, 0, z), this.getAllRocks())
+    this.enemyManager.spawnAtWithCallback(
+      config,
+      new THREE.Vector3(x, 0, z),
+      this.getAllRocks(),
+      (pos, dir, dmg) => (this.enemyBulletManager.fire(pos, dir, 12).state.damage = dmg)
+    )
   }
 
   private handleInput(): void {
@@ -473,7 +504,7 @@ export class Game {
 
         const dir = this.player.getDirection()
         const pos = this.player.getMuzzlePosition()
-        this.bulletManager.fire(pos, dir)
+        this.bulletManager.fire(pos, dir, 15)
         this.audioManager.playShoot()
       }
     })
@@ -709,6 +740,25 @@ export class Game {
     }
   }
 
+  private checkEnemyBulletCollisions(): void {
+    const bullets = this.enemyBulletManager.getBullets()
+    const playerPos = this.player.mesh.position
+
+    for (const bullet of bullets) {
+      const dist = bullet.getPosition().distanceTo(playerPos)
+      if (dist < 0.8) {
+        this.audioManager.playHit()
+        const dead = this.player.takeDamage(bullet.state.damage)
+        this.enemyBulletManager.remove(bullet)
+        if (dead) {
+          this.isGameOver = true
+          this.uiManager.showGameOver()
+        }
+        break
+      }
+    }
+  }
+
   private update(delta: number): void {
     const px = Math.floor(this.player.mesh.position.x / this.chunkSize)
     const pz = Math.floor(this.player.mesh.position.z / this.chunkSize)
@@ -724,12 +774,14 @@ export class Game {
 
     this.player.update(delta, this.camera, this.bounds)
     this.bulletManager.update(delta)
+    this.enemyBulletManager.update(delta)
     this.enemyManager.update(delta, this.player.mesh.position)
     this.itemManager.update(delta)
     this.updateEffects(delta)
 
     this.checkBulletEnemyCollisions()
     this.checkEnemyPlayerCollisions()
+    this.checkEnemyBulletCollisions()
     this.collectItems()
 
     this.uiManager.updateStats(
