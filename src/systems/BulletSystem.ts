@@ -77,6 +77,19 @@ export class Bullet {
   getTrail(): THREE.Points {
     return this.trail
   }
+
+  dispose(): void {
+    this.mesh.geometry.dispose()
+    if (this.mesh.material) {
+      if (Array.isArray(this.mesh.material)) {
+        this.mesh.material.forEach((m) => { m.dispose(); })
+      } else {
+        (this.mesh.material).dispose()
+      }
+    }
+    this.trail.geometry.dispose()
+    ;(this.trail.material as THREE.Material).dispose()
+  }
 }
 
 export class BulletManager {
@@ -107,8 +120,7 @@ export class BulletManager {
     for (const bullet of toRemove) {
       this.scene.remove(bullet.mesh)
       this.scene.remove(bullet.getTrail())
-      bullet.getTrail().geometry.dispose()
-      ;(bullet.getTrail().material as THREE.PointsMaterial).dispose()
+      bullet.dispose()
       const idx = this.bullets.indexOf(bullet)
       if (idx > -1) this.bullets.splice(idx, 1)
     }
@@ -121,8 +133,7 @@ export class BulletManager {
   remove(bullet: Bullet): void {
     this.scene.remove(bullet.mesh)
     this.scene.remove(bullet.getTrail())
-    bullet.getTrail().geometry.dispose()
-    ;(bullet.getTrail().material as THREE.PointsMaterial).dispose()
+    bullet.dispose()
     const idx = this.bullets.indexOf(bullet)
     if (idx > -1) this.bullets.splice(idx, 1)
   }

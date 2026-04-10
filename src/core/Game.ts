@@ -8,6 +8,14 @@ import type { MapData, Vegetation } from '../systems/MapGenerator'
 import { ItemManager, ItemType } from '../systems/ItemSystem'
 import { UIManager } from '../systems/UIManager'
 import { AudioManager } from '../systems/AudioManager'
+import { CraftingSystem } from '../systems/CraftingSystem'
+import { SaveSystem } from '../systems/SaveSystem'
+import { Inventory } from './Inventory'
+import { WeaponProficiency } from './WeaponProficiency'
+import { WeaponType, Weapon, WeaponRegistry } from './Weapon'
+import { MiniMap } from '../systems/MiniMap'
+import { SettingsUI } from '../systems/SettingsUI'
+import { DefenseMode } from './DefenseMode'
 
 export class Game {
   private scene: THREE.Scene
@@ -32,6 +40,9 @@ export class Game {
   private gold = 0
   private herbs = 0
   private ores = 0
+  private gunpowder = 0
+  private lightAmmo = 0
+  private heavyAmmo = 0
   private isPaused = false
   private isGameOver = false
   private terrainChunks = new Map<string, THREE.Group>()
@@ -39,6 +50,17 @@ export class Game {
   private currentChunkZ = 0
   private chunkSize = 24
   private loadDistance = 2
+  private craftingSystem!: CraftingSystem
+  private saveSystem!: SaveSystem
+  private inventory!: Inventory
+  private weaponProficiency!: WeaponProficiency
+  private miniMap!: MiniMap
+  private settingsUI!: SettingsUI
+  private saveTimer = 0
+  private currentWeaponType: WeaponType = WeaponType.Pistol
+  private playerWeapon!: Weapon
+  private defenseMode!: DefenseMode
+  private isDefenseMode = false
 
   constructor() {
     this.scene = new THREE.Scene()
@@ -66,6 +88,48 @@ export class Game {
   init(): void {
     this.uiManager = new UIManager()
     this.audioManager = new AudioManager()
+    this.inventory = new Inventory()
+    this.craftingSystem = new CraftingSystem()
+    this.weaponProficiency = new WeaponProficiency()
+    this.saveSystem = new SaveSystem()
+    this.miniMap = new MiniMap(this.bounds * 2)
+    this.settingsUI = new SettingsUI()
+    this.playerWeapon = new Weapon(WeaponType.Pistol)
+    this.defenseMode = new DefenseMode(
+      this.scene,
+      new THREE.Vector3(0, 0, 0),
+      30,
+      (config, position) => {
+        this.enemyManager.spawnAtWithCallback(
+          config,
+          position,
+          this.getAllRocks(),
+          (pos, dir, dmg) => (this.enemyBulletManager.fire(pos, dir, 12).state.damage = dmg)
+        )
+      }
+    )
+    this.defenseMode.setCallbacks({
+      onWaveComplete: (wave) => {
+        this.uiManager.updateDefenseWave(wave, this.defenseMode.getTotalWaves())
+      },
+      onGameComplete: () => {
+        this.isGameOver = true
+        this.uiManager.showGameOver()
+      },
+      onPlayerOutOfBounds: () => {
+        // Push player back into defense area
+        const playerPos = this.player.mesh.position
+        const dx = playerPos.x
+        const dz = playerPos.z
+        const dist = Math.sqrt(dx * dx + dz * dz)
+        if (dist >= 25) {
+          const angle = Math.atan2(dz, dx)
+          this.player.mesh.position.x = Math.cos(angle) * 26
+          this.player.mesh.position.z = Math.sin(angle) * 26
+        }
+      }
+    })
+
     this.generateMap()
     this.createLights()
     this.createGround()
@@ -78,6 +142,7 @@ export class Game {
     this.spawnInitialEnemies()
     this.handleInput()
     this.handleResize()
+    this.tryLoadGame()
     this.animate()
     this.audioManager.startBGM()
   }
@@ -427,13 +492,17 @@ export class Game {
       EnemyType.Goblin,
       EnemyType.Orc,
       EnemyType.Slime,
-      EnemyType.Bat
+      EnemyType.Bat,
+      EnemyType.Skeleton,
+      EnemyType.Mushroom
     ]
     const colors: Record<EnemyType, number> = {
       [EnemyType.Goblin]: 0x44aa44,
       [EnemyType.Orc]: 0x665533,
       [EnemyType.Slime]: 0x44ff88,
-      [EnemyType.Bat]: 0x443366
+      [EnemyType.Bat]: 0x443366,
+      [EnemyType.Skeleton]: 0xddddcc,
+      [EnemyType.Mushroom]: 0xff6644
     }
     const stats: Record<
       EnemyType,
@@ -462,7 +531,19 @@ export class Game {
       },
       [EnemyType.Orc]: { hp: 80, speed: 2, damage: 15, detectRange: 10, attackRange: 1.5 },
       [EnemyType.Slime]: { hp: 30, speed: 2.5, damage: 5, detectRange: 8, attackRange: 1 },
-      [EnemyType.Bat]: { hp: 20, speed: 5, damage: 4, detectRange: 15, attackRange: 0.8 }
+      [EnemyType.Bat]: { hp: 20, speed: 5, damage: 4, detectRange: 15, attackRange: 0.8 },
+      [EnemyType.Skeleton]: {
+        hp: 35,
+        speed: 2.8,
+        damage: 10,
+        detectRange: 14,
+        attackRange: 1.0,
+        hasRangedAttack: true,
+        rangedAttackRange: 15,
+        rangedAttackDamage: 12,
+        rangedAttackCooldown: 2.5
+      },
+      [EnemyType.Mushroom]: { hp: 50, speed: 1.5, damage: 8, detectRange: 10, attackRange: 1.5 }
     }
 
     const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)]
@@ -498,13 +579,37 @@ export class Game {
       if (this.isPaused || this.isGameOver) return
 
       const now = performance.now() / 1000
-      if (now - this.lastShotTime >= this.fireRate && this.ammo > 0) {
-        this.lastShotTime = now
-        this.ammo--
+      const weaponDef = WeaponRegistry.get(this.currentWeaponType)
+      if (!weaponDef) return
 
-        const dir = this.player.getDirection()
-        const pos = this.player.getMuzzlePosition()
-        this.bulletManager.fire(pos, dir, 15)
+      const effectiveFireRate = this.weaponProficiency.getEffectiveAttackSpeed(
+        weaponDef.stats.attackSpeed,
+        this.currentWeaponType
+      )
+
+      if (now - this.lastShotTime >= effectiveFireRate && this.playerWeapon.canFire()) {
+        this.lastShotTime = now
+        this.playerWeapon.fire()
+
+        const baseDamage = this.weaponProficiency.getEffectiveDamage(
+          weaponDef.stats.damage,
+          this.currentWeaponType
+        )
+        const projectileCount = weaponDef.stats.projectileCount
+        const spreadAngle = weaponDef.stats.spreadAngle
+
+        for (let i = 0; i < projectileCount; i++) {
+          let dir = this.player.getDirection()
+
+          if (projectileCount > 1) {
+            const angleOffset = ((i / (projectileCount - 1)) - 0.5) * (spreadAngle * Math.PI / 180)
+            dir = dir.clone()
+            dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), angleOffset)
+          }
+
+          const pos = this.player.getMuzzlePosition()
+          this.bulletManager.fire(pos, dir, weaponDef.stats.range).state.damage = baseDamage
+        }
         this.audioManager.playShoot()
       }
     })
@@ -515,8 +620,10 @@ export class Game {
         this.isPaused = !this.isPaused
         if (this.isPaused) {
           this.uiManager.showPauseMenu()
+          this.settingsUI.show()
         } else {
           this.uiManager.hidePauseMenu()
+          this.settingsUI.hide()
         }
       }
       if (e.key.toLowerCase() === 'r' && this.isGameOver) {
@@ -525,7 +632,72 @@ export class Game {
       if (e.key.toLowerCase() === 'm') {
         this.audioManager.toggleMute()
       }
+      if (e.key.toLowerCase() === 'q' || e.key.toLowerCase() === 'e') {
+        this.switchWeapon(e.key.toLowerCase() === 'q' ? -1 : 1)
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        this.toggleDefenseMode()
+      }
     })
+  }
+
+  private switchWeapon(direction: number): void {
+    const types = Object.values(WeaponType)
+    const currentIndex = types.indexOf(this.currentWeaponType)
+    let newIndex = currentIndex + direction
+    if (newIndex < 0) newIndex = types.length - 1
+    if (newIndex >= types.length) newIndex = 0
+    this.currentWeaponType = types[newIndex]
+    this.playerWeapon = new Weapon(this.currentWeaponType)
+  }
+
+  private toggleDefenseMode(): void {
+    if (this.isDefenseMode) {
+      // Exit defense mode
+      this.defenseMode.reset()
+      this.isDefenseMode = false
+      this.uiManager.updateDefenseMode(false)
+    } else {
+      // Enter defense mode
+      this.isDefenseMode = true
+      this.defenseMode.startWave(1)
+      this.uiManager.updateDefenseMode(true)
+      this.uiManager.updateDefenseWave(1, this.defenseMode.getTotalWaves())
+    }
+  }
+
+  private tryLoadGame(): void {
+    const saveData = this.saveSystem.loadGame()
+    if (saveData) {
+      this.player.state.hp = saveData.player.hp
+      this.gold = saveData.player.gold
+      this.herbs = saveData.player.herbs
+      this.ores = saveData.player.ores
+      this.ammo = saveData.player.ammo
+      this.lightAmmo = saveData.player.lightAmmo
+      this.heavyAmmo = saveData.player.heavyAmmo
+      this.gunpowder = saveData.player.gunpowder
+      this.currentChunkX = saveData.world.currentChunkX
+      this.currentChunkZ = saveData.world.currentChunkZ
+    }
+  }
+
+  private autoSave(): void {
+    this.saveSystem.saveGame(
+      this.player.state,
+      this.gold,
+      this.herbs,
+      this.ores,
+      this.ammo,
+      this.lightAmmo,
+      this.heavyAmmo,
+      this.gunpowder,
+      this.inventory,
+      String(this.mapGenerator.getSeed()),
+      this.currentChunkX,
+      this.currentChunkZ
+    )
   }
 
   private handleResize(): void {
@@ -572,15 +744,31 @@ export class Game {
       switch (item.type) {
         case ItemType.Gold:
           this.gold += item.value
+          this.inventory.addItem(ItemType.Gold, item.value)
           break
         case ItemType.Ammo:
           this.ammo = Math.min(this.ammo + item.value, this.maxAmmo)
+          this.inventory.addItem(ItemType.Ammo, item.value)
           break
         case ItemType.Herb:
           this.herbs += item.value
+          this.inventory.addItem(ItemType.Herb, item.value)
           break
         case ItemType.Ore:
           this.ores += item.value
+          this.inventory.addItem(ItemType.Ore, item.value)
+          break
+        case ItemType.Gunpowder:
+          this.gunpowder += item.value
+          this.inventory.addItem(ItemType.Gunpowder, item.value)
+          break
+        case ItemType.LightAmmo:
+          this.lightAmmo += item.value
+          this.inventory.addItem(ItemType.LightAmmo, item.value)
+          break
+        case ItemType.HeavyAmmo:
+          this.heavyAmmo += item.value
+          this.inventory.addItem(ItemType.HeavyAmmo, item.value)
           break
         case ItemType.HealthPotion:
           this.player.heal(item.value)
@@ -589,6 +777,7 @@ export class Game {
           this.player.applySpeedBoost(item.value, 5)
           break
       }
+      this.craftingSystem.addItem(item.type, item.value)
     }
   }
 
@@ -606,8 +795,13 @@ export class Game {
           this.bulletManager.remove(bullet)
 
           if (dead) {
+            this.weaponProficiency.addKill(this.currentWeaponType)
+            this.weaponProficiency.addDamage(this.currentWeaponType, bullet.state.damage)
             this.itemManager.spawnAtEnemyDeath(enemy.getPosition(), enemy.type)
             this.enemyManager.remove(enemy)
+            if (this.isDefenseMode) {
+              this.defenseMode.enemyKilled()
+            }
           }
           break
         }
@@ -754,7 +948,6 @@ export class Game {
           this.isGameOver = true
           this.uiManager.showGameOver()
         }
-        break
       }
     }
   }
@@ -784,6 +977,13 @@ export class Game {
     this.checkEnemyBulletCollisions()
     this.collectItems()
 
+    this.miniMap.update(
+      this.player.mesh.position,
+      this.player.state.rotation,
+      this.enemyManager.getEnemies().map((e) => ({ pos: e.getPosition() })),
+      []
+    )
+
     this.uiManager.updateStats(
       this.player.state.hp,
       this.player.state.maxHp,
@@ -794,14 +994,25 @@ export class Game {
       this.ores
     )
 
-    this.enemySpawnTimer += delta
-    if (this.enemySpawnTimer >= 3) {
-      this.enemySpawnTimer = 0
-      const playerPos = this.player.mesh.position
+    if (this.isDefenseMode) {
+      this.defenseMode.update(delta, this.player.mesh.position)
+      this.uiManager.updateDefenseEnemies(this.defenseMode.getEnemiesRemaining())
+    } else {
+      this.enemySpawnTimer += delta
+      if (this.enemySpawnTimer >= 3) {
+        this.enemySpawnTimer = 0
+        const playerPos = this.player.mesh.position
 
-      if (this.enemyManager.getEnemies().length < 15) {
-        this.spawnEnemyNearPlayer(playerPos)
+        if (this.enemyManager.getEnemies().length < 15) {
+          this.spawnEnemyNearPlayer(playerPos)
+        }
       }
+    }
+
+    this.saveTimer += delta
+    if (this.saveTimer >= 30) {
+      this.saveTimer = 0
+      this.autoSave()
     }
   }
 }

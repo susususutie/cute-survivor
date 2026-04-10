@@ -38,7 +38,8 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
-      'no-case-declarations': 'off'
+      'no-case-declarations': 'off',
+      '@typescript-eslint/non-nullable-type-assertion-style': 'off'
     }
   },
   {
@@ -47,7 +48,11 @@ export default tseslint.config(
       '@typescript-eslint/consistent-type-imports': 'off',
       '@typescript-eslint/unbound-method': 'off',
       '@typescript-eslint/no-confusing-void-expression': 'off',
-      '@typescript-eslint/no-non-null-assertion': 'off'
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-dynamic-delete': 'off'
     }
   }
 )

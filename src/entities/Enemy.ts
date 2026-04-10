@@ -11,7 +11,9 @@ export enum EnemyType {
   Goblin = 'goblin',
   Orc = 'orc',
   Slime = 'slime',
-  Bat = 'bat'
+  Bat = 'bat',
+  Skeleton = 'skeleton',
+  Mushroom = 'mushroom'
 }
 
 export interface EnemyConfig {
@@ -49,7 +51,7 @@ export class Enemy {
   private isAggro = false
   private deaggroTimer = 0
   private patrolTarget: THREE.Vector3
-  private attackCooldown = 0
+  private attackCooldown = 1
   private rocks: Rock[] = []
   private colliderRadius = 0.5
   private animPhase = 0
@@ -106,9 +108,117 @@ export class Enemy {
       case EnemyType.Bat:
         this.buildBat(config.color)
         break
+      case EnemyType.Skeleton:
+        this.buildSkeleton()
+        break
+      case EnemyType.Mushroom:
+        this.buildMushroom()
+        break
       default:
         this.buildGoblin(config.color)
     }
+  }
+
+  private buildSkeleton(): void {
+    const boneColor = 0xddeeff
+
+    const ribGeo = new THREE.BoxGeometry(0.8, 0.1, 0.3)
+    const ribMat = new THREE.MeshStandardMaterial({ color: boneColor, roughness: 0.8 })
+    const ribcage = new THREE.Mesh(ribGeo, ribMat)
+    ribcage.castShadow = true
+    ribcage.position.y = 0.5
+    this.mesh.add(ribcage)
+
+    const spineGeo = new THREE.BoxGeometry(0.15, 0.8, 0.15)
+    const spine = new THREE.Mesh(spineGeo, ribMat)
+    spine.position.y = 0.4
+    this.mesh.add(spine)
+
+    const rib2Geo = new THREE.BoxGeometry(0.7, 0.08, 0.25)
+    const rib2 = new THREE.Mesh(rib2Geo, ribMat)
+    rib2.position.y = 0.65
+    this.mesh.add(rib2)
+
+    const skullGeo = new THREE.SphereGeometry(0.3, 10, 8)
+    const skullMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.6 })
+    const skull = new THREE.Mesh(skullGeo, skullMat)
+    skull.castShadow = true
+    skull.position.y = 1.1
+    skull.scale.set(1, 1.15, 1)
+    this.mesh.add(skull)
+
+    const eyeSocketGeo = new THREE.SphereGeometry(0.08, 6, 6)
+    const eyeSocketMat = new THREE.MeshBasicMaterial({ color: 0x111111 })
+    const eyeSocketL = new THREE.Mesh(eyeSocketGeo, eyeSocketMat)
+    eyeSocketL.position.set(-0.1, 1.15, 0.22)
+    this.mesh.add(eyeSocketL)
+    const eyeSocketR = new THREE.Mesh(eyeSocketGeo, eyeSocketMat)
+    eyeSocketR.position.set(0.1, 1.15, 0.22)
+    this.mesh.add(eyeSocketR)
+
+    const jawGeo = new THREE.BoxGeometry(0.2, 0.08, 0.15)
+    const jaw = new THREE.Mesh(jawGeo, ribMat)
+    jaw.position.set(0, 0.88, 0.2)
+    this.mesh.add(jaw)
+
+    const armGeo = new THREE.CylinderGeometry(0.06, 0.05, 0.7, 6)
+    const armL = new THREE.Mesh(armGeo, ribMat)
+    armL.position.set(-0.5, 0.5, 0)
+    armL.rotation.z = 0.3
+    this.mesh.add(armL)
+    const armR = new THREE.Mesh(armGeo, ribMat)
+    armR.position.set(0.5, 0.5, 0)
+    armR.rotation.z = -0.3
+    this.mesh.add(armR)
+
+    const legGeo = new THREE.CylinderGeometry(0.07, 0.06, 0.6, 6)
+    const legL = new THREE.Mesh(legGeo, ribMat)
+    legL.position.set(-0.2, 0.1, 0)
+    this.mesh.add(legL)
+    const legR = new THREE.Mesh(legGeo, ribMat)
+    legR.position.set(0.2, 0.1, 0)
+    this.mesh.add(legR)
+  }
+
+  private buildMushroom(): void {
+    const capColor = 0xcc2222
+    const stemColor = 0xddaa77
+
+    const capGeo = new THREE.SphereGeometry(0.5, 12, 8)
+    const capMat = new THREE.MeshStandardMaterial({ color: capColor, roughness: 0.4 })
+    const cap = new THREE.Mesh(capGeo, capMat)
+    cap.castShadow = true
+    cap.position.y = 0.8
+    cap.scale.set(1.3, 0.6, 1.3)
+    this.mesh.add(cap)
+
+    const spotGeo = new THREE.SphereGeometry(0.08, 6, 6)
+    const spotMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
+    const spot1 = new THREE.Mesh(spotGeo, spotMat)
+    spot1.position.set(0.15, 0.85, 0.4)
+    this.mesh.add(spot1)
+    const spot2 = new THREE.Mesh(spotGeo, spotMat)
+    spot2.position.set(-0.2, 0.8, 0.35)
+    this.mesh.add(spot2)
+    const spot3 = new THREE.Mesh(spotGeo, spotMat)
+    spot3.position.set(0.05, 0.92, 0.28)
+    this.mesh.add(spot3)
+
+    const stemGeo = new THREE.CylinderGeometry(0.2, 0.25, 0.6, 8)
+    const stemMat = new THREE.MeshStandardMaterial({ color: stemColor, roughness: 0.7 })
+    const stem = new THREE.Mesh(stemGeo, stemMat)
+    stem.castShadow = true
+    stem.position.y = 0.3
+    this.mesh.add(stem)
+
+    const eyeGeo = new THREE.SphereGeometry(0.06, 6, 6)
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x111111 })
+    const eyeL = new THREE.Mesh(eyeGeo, eyeMat)
+    eyeL.position.set(-0.1, 0.35, 0.22)
+    this.mesh.add(eyeL)
+    const eyeR = new THREE.Mesh(eyeGeo, eyeMat)
+    eyeR.position.set(0.1, 0.35, 0.22)
+    this.mesh.add(eyeR)
   }
 
   private buildGoblin(color: number): void {
@@ -323,7 +433,11 @@ export class Enemy {
       this.state = EnemyState.Attack
       this.isAggro = true
       this.deaggroTimer = 0
-      this.handleAttack(delta)
+      if (this.hasRangedAttack && distToPlayer <= this.rangedAttackRange) {
+        this.handleRangedAttack(delta, playerPos)
+      } else {
+        this.handleAttack(delta)
+      }
     } else if (this.hasRangedAttack && distToPlayer <= this.rangedAttackRange && this.isAggro) {
       this.state = EnemyState.Chase
       this.handleRangedAttack(delta, playerPos)
@@ -459,6 +573,23 @@ export class Enemy {
   getPosition(): THREE.Vector3 {
     return this.mesh.position.clone()
   }
+
+  dispose(): void {
+    this.mesh.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        if (child.geometry) {
+          child.geometry.dispose()
+        }
+        if (child.material) {
+          if (child.material instanceof THREE.MeshStandardMaterial) {
+            child.material.dispose()
+          } else if (child.material instanceof THREE.MeshBasicMaterial) {
+            child.material.dispose()
+          }
+        }
+      }
+    })
+  }
 }
 
 export class EnemyManager {
@@ -532,6 +663,7 @@ export class EnemyManager {
   }
 
   remove(enemy: Enemy): void {
+    enemy.dispose()
     this.scene.remove(enemy.mesh)
     const idx = this.enemies.indexOf(enemy)
     if (idx > -1) this.enemies.splice(idx, 1)

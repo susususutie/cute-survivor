@@ -6,6 +6,9 @@ export enum ItemType {
   Herb = 'herb',
   Ore = 'ore',
   Ammo = 'ammo',
+  Gunpowder = 'gunpowder',
+  LightAmmo = 'light_ammo',
+  HeavyAmmo = 'heavy_ammo',
   HealthPotion = 'health_potion',
   SpeedPotion = 'speed_potion'
 }
@@ -26,6 +29,9 @@ export class Item {
       [ItemType.Herb]: 0x44ff88,
       [ItemType.Ore]: 0x8888ff,
       [ItemType.Ammo]: 0xff8844,
+      [ItemType.Gunpowder]: 0xff4400,
+      [ItemType.LightAmmo]: 0xffaa44,
+      [ItemType.HeavyAmmo]: 0xff6600,
       [ItemType.HealthPotion]: 0xff4444,
       [ItemType.SpeedPotion]: 0x44aaff
     }
@@ -69,6 +75,9 @@ export class Item {
       [ItemType.Herb]: 5,
       [ItemType.Ore]: 8,
       [ItemType.Ammo]: 15,
+      [ItemType.Gunpowder]: 3,
+      [ItemType.LightAmmo]: 2,
+      [ItemType.HeavyAmmo]: 5,
       [ItemType.HealthPotion]: 25,
       [ItemType.SpeedPotion]: 5
     }
@@ -84,6 +93,30 @@ export class Item {
 
   getPosition(): THREE.Vector3 {
     return this.mesh.position.clone()
+  }
+
+  dispose(): void {
+    if (this.mesh.geometry) this.mesh.geometry.dispose()
+    if (this.mesh.material) {
+      if (Array.isArray(this.mesh.material)) {
+        this.mesh.material.forEach((m) => { m.dispose(); })
+      } else {
+        (this.mesh.material).dispose()
+      }
+    }
+    // Dispose child meshes (e.g., bottle for potions)
+    for (const child of this.mesh.children) {
+      if (child instanceof THREE.Mesh) {
+        if (child.geometry) child.geometry.dispose()
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach((m) => { m.dispose(); })
+          } else {
+            (child.material as THREE.Material).dispose()
+          }
+        }
+      }
+    }
   }
 }
 
@@ -126,6 +159,16 @@ export class ItemManager {
         drops.push({ type: ItemType.Gold, chance: 0.35 })
         drops.push({ type: ItemType.Ammo, chance: 0.25 })
         break
+      case EnemyType.Skeleton:
+        drops.push({ type: ItemType.Gold, chance: 0.5 })
+        drops.push({ type: ItemType.Gunpowder, chance: 0.3 })
+        drops.push({ type: ItemType.LightAmmo, chance: 0.2 })
+        break
+      case EnemyType.Mushroom:
+        drops.push({ type: ItemType.HealthPotion, chance: 0.4 })
+        drops.push({ type: ItemType.Herb, chance: 0.35 })
+        drops.push({ type: ItemType.Gold, chance: 0.25 })
+        break
     }
 
     const roll = Math.random()
@@ -152,6 +195,7 @@ export class ItemManager {
 
   remove(item: Item): void {
     this.scene.remove(item.mesh)
+    item.dispose()
     const idx = this.items.indexOf(item)
     if (idx > -1) this.items.splice(idx, 1)
   }

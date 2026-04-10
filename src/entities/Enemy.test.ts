@@ -144,9 +144,9 @@ describe('Enemy', () => {
     expect(dead).toBe(true)
   })
 
-  it('canAttack returns true initially', () => {
+  it('canAttack returns false initially due to cooldown', () => {
     const enemy = new Enemy(goblinConfig, new THREE.Vector3(0, 0, 0))
-    expect(enemy.canAttack()).toBe(true)
+    expect(enemy.canAttack()).toBe(false)
   })
 
   it('attack sets cooldown', () => {

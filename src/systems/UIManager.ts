@@ -1,6 +1,7 @@
 export class UIManager {
   private pauseMenu: HTMLElement
   private gameOverScreen: HTMLElement
+  private defenseHUD: HTMLElement | null = null
 
   constructor() {
     this.createHUD()
@@ -179,21 +180,21 @@ export class UIManager {
     herbs: number,
     ores: number
   ): void {
-    const hpBar = document.getElementById('hp-bar')!
-    const hpValue = document.getElementById('hp-value')!
-    const ammoBar = document.getElementById('ammo-bar')!
-    const ammoValue = document.getElementById('ammo-value')!
-    const goldValue = document.getElementById('gold-value')!
-    const herbValue = document.getElementById('herb-value')!
-    const oreValue = document.getElementById('ore-value')!
+    const hpBar = document.getElementById('hp-bar')
+    const hpValue = document.getElementById('hp-value')
+    const ammoBar = document.getElementById('ammo-bar')
+    const ammoValue = document.getElementById('ammo-value')
+    const goldValue = document.getElementById('gold-value')
+    const herbValue = document.getElementById('herb-value')
+    const oreValue = document.getElementById('ore-value')
 
-    hpBar.style.width = `${(hp / maxHp) * 100}%`
-    hpValue.textContent = String(Math.max(0, hp))
-    ammoBar.style.width = `${(ammo / maxAmmo) * 100}%`
-    ammoValue.textContent = String(ammo)
-    goldValue.textContent = String(gold)
-    herbValue.textContent = String(herbs)
-    oreValue.textContent = String(ores)
+    if (hpBar) hpBar.style.width = `${(hp / maxHp) * 100}%`
+    if (hpValue) hpValue.textContent = String(Math.max(0, hp))
+    if (ammoBar) ammoBar.style.width = `${(ammo / maxAmmo) * 100}%`
+    if (ammoValue) ammoValue.textContent = String(ammo)
+    if (goldValue) goldValue.textContent = String(gold)
+    if (herbValue) herbValue.textContent = String(herbs)
+    if (oreValue) oreValue.textContent = String(ores)
   }
 
   showPauseMenu(): void {
@@ -210,5 +211,84 @@ export class UIManager {
 
   hideGameOver(): void {
     this.gameOverScreen.style.display = 'none'
+  }
+
+  updateDefenseMode(active: boolean): void {
+    if (active) {
+      this.defenseHUD = document.createElement('div')
+      this.defenseHUD.id = 'defense-hud'
+      this.defenseHUD.innerHTML = `
+        <div class="defense-info">
+          <span class="mode-badge">DEFENSE MODE</span>
+          <span class="wave-info">Wave <span id="wave-number">1</span>/<span id="wave-total">10</span></span>
+          <span class="enemies-info">Enemies: <span id="enemies-remaining">0</span></span>
+        </div>
+      `
+      this.defenseHUD.style.cssText = `
+        position: fixed;
+        top: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(20, 20, 40, 0.9);
+        padding: 12px 24px;
+        border-radius: 8px;
+        border: 2px solid #ff6644;
+        font-family: 'Courier New', monospace;
+        color: #fff;
+        z-index: 150;
+        display: flex;
+        gap: 24px;
+        align-items: center;
+      `
+      this.addDefenseStyles()
+      document.body.appendChild(this.defenseHUD)
+    } else {
+      if (this.defenseHUD) {
+        this.defenseHUD.remove()
+        this.defenseHUD = null
+      }
+    }
+  }
+
+  updateDefenseWave(wave: number, total: number): void {
+    const waveNum = document.getElementById('wave-number')
+    const waveTot = document.getElementById('wave-total')
+    if (waveNum) waveNum.textContent = String(wave)
+    if (waveTot) waveTot.textContent = String(total)
+  }
+
+  updateDefenseEnemies(count: number): void {
+    const enemiesEl = document.getElementById('enemies-remaining')
+    if (enemiesEl) enemiesEl.textContent = String(count)
+  }
+
+  private addDefenseStyles(): void {
+    if (document.getElementById('defense-styles')) return
+    const style = document.createElement('style')
+    style.id = 'defense-styles'
+    style.textContent = `
+      .defense-info {
+        display: flex;
+        gap: 24px;
+        align-items: center;
+      }
+      .mode-badge {
+        background: #ff6644;
+        color: #fff;
+        padding: 4px 12px;
+        border-radius: 4px;
+        font-weight: bold;
+        font-size: 12px;
+      }
+      .wave-info, .enemies-info {
+        font-size: 14px;
+        color: #aabbcc;
+      }
+      .wave-info span, .enemies-info span {
+        color: #ffaa44;
+        font-weight: bold;
+      }
+    `
+    document.head.appendChild(style)
   }
 }
