@@ -8,12 +8,31 @@ export interface SettingsCallbacks {
   onVolumeChange?: (bgmVolume: number, seVolume: number) => void
   onQualityChange?: (quality: 'low' | 'medium' | 'high') => void
   onClose?: () => void
+  onSave?: () => void
+  onReturnToMenu?: () => void
 }
 
 export class SettingsUI {
   private container: HTMLElement
   private settings: Settings
   private callbacks: SettingsCallbacks
+
+  // Public setters for callbacks (allows setting after construction)
+  set onVolumeChange(callback: (bgmVolume: number, seVolume: number) => void) {
+    this.callbacks.onVolumeChange = callback
+  }
+  set onQualityChange(callback: (quality: 'low' | 'medium' | 'high') => void) {
+    this.callbacks.onQualityChange = callback
+  }
+  set onClose(callback: () => void) {
+    this.callbacks.onClose = callback
+  }
+  set onSave(callback: () => void) {
+    this.callbacks.onSave = callback
+  }
+  set onReturnToMenu(callback: () => void) {
+    this.callbacks.onReturnToMenu = callback
+  }
 
   constructor(callbacks?: SettingsCallbacks) {
     this.settings = {
@@ -72,6 +91,8 @@ export class SettingsUI {
               <li><kbd>R</kbd> - Reload</li>
             </ul>
           </div>
+          <button class="settings-save-btn" id="settings-save">保存游戏</button>
+          <button class="settings-menu-btn" id="settings-menu">返回主菜单</button>
         </div>
       </div>
     `
@@ -117,6 +138,20 @@ export class SettingsUI {
         this.callbacks.onQualityChange?.(this.settings.quality)
       })
     })
+
+    const saveBtn = container.querySelector('#settings-save')
+    if (saveBtn) {
+      saveBtn.addEventListener('click', () => {
+        this.callbacks.onSave?.()
+      })
+    }
+
+    const menuBtn = container.querySelector('#settings-menu')
+    if (menuBtn) {
+      menuBtn.addEventListener('click', () => {
+        this.callbacks.onReturnToMenu?.()
+      })
+    }
   }
 
   private addStyles(): void {
@@ -262,6 +297,49 @@ export class SettingsUI {
         font-size: 12px;
         color: #ccddee;
         border: 1px solid #3a4a5a;
+      }
+      #settings-panel .settings-save-btn {
+        display: inline-block;
+        width: calc(50% - 6px);
+        margin-top: 20px;
+        margin-right: 12px;
+        padding: 14px 16px;
+        background: linear-gradient(135deg, #44aa88 0%, #338866 100%);
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: bold;
+        color: #fff;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-family: 'Courier New', monospace;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      #settings-panel .settings-save-btn:hover {
+        transform: scale(1.02);
+        box-shadow: 0 0 20px rgba(68, 170, 136, 0.5);
+      }
+      #settings-panel .settings-menu-btn {
+        display: inline-block;
+        width: calc(50% - 6px);
+        margin-top: 20px;
+        padding: 14px 16px;
+        background: linear-gradient(135deg, #445566 0%, #334455 100%);
+        border: 2px solid #5588aa;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: bold;
+        color: #fff;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-family: 'Courier New', monospace;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      #settings-panel .settings-menu-btn:hover {
+        transform: scale(1.02);
+        box-shadow: 0 0 20px rgba(85, 136, 170, 0.5);
       }
     `
     document.head.appendChild(style)

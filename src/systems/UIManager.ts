@@ -3,6 +3,8 @@ export class UIManager {
   private gameOverScreen: HTMLElement
   private defenseHUD: HTMLElement | null = null
 
+  onSave: (() => void) | null = null
+
   constructor() {
     this.createHUD()
     this.pauseMenu = this.createPauseMenu()
@@ -115,12 +117,42 @@ export class UIManager {
       <div class="menu-content">
         <h1>Paused</h1>
         <p>Press ESC to resume</p>
+        <button class="menu-btn" id="save-btn">保存游戏</button>
       </div>
     `
     menu.style.display = 'none'
     document.body.appendChild(menu)
     this.addMenuStyles('pause-menu')
+    this.addPauseMenuButtonStyles()
     return menu
+  }
+
+  private addPauseMenuButtonStyles(): void {
+    if (document.getElementById('pause-menu-btn-styles')) return
+    const style = document.createElement('style')
+    style.id = 'pause-menu-btn-styles'
+    style.textContent = `
+      .menu-btn {
+        display: block;
+        background: linear-gradient(135deg, #445566 0%, #334455 100%);
+        border: 2px solid #5588aa;
+        border-radius: 8px;
+        padding: 12px 24px;
+        font-size: 16px;
+        color: #fff;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-family: 'Courier New', monospace;
+        margin: 12px auto;
+        min-width: 140px;
+      }
+      .menu-btn:hover {
+        background: linear-gradient(135deg, #5588aa 0%, #446688 100%);
+        transform: scale(1.05);
+        box-shadow: 0 0 15px rgba(85, 136, 170, 0.5);
+      }
+    `
+    document.head.appendChild(style)
   }
 
   private createGameOverScreen(): HTMLElement {
@@ -199,6 +231,12 @@ export class UIManager {
 
   showPauseMenu(): void {
     this.pauseMenu.style.display = 'flex'
+    const saveBtn = document.getElementById('save-btn')
+    if (saveBtn) {
+      saveBtn.onclick = () => {
+        if (this.onSave) this.onSave()
+      }
+    }
   }
 
   hidePauseMenu(): void {

@@ -1,5 +1,5 @@
 import { Game } from './core/Game'
 
 const game = new Game()
-game.init()
+// boot() is called automatically in constructor
 ;(window as unknown as Record<string, unknown>).game = game

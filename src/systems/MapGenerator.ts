@@ -1,3 +1,5 @@
+import { type WorldConfig, hashStringSeed } from '../core/WorldConfig'
+
 export class SeededRandom {
   public seed: number
 
@@ -65,23 +67,41 @@ export class MapGenerator {
   private bounds: number
   private chunkSize = 48
   private baseSeed: number
+  private config: WorldConfig
 
-  constructor(seed: number, bounds: number) {
-    this.baseSeed = seed
-    this.rng = new SeededRandom(seed)
+  constructor(config: WorldConfig, bounds: number) {
+    this.config = config
+    this.baseSeed = hashStringSeed(config.seed)
+    this.rng = new SeededRandom(this.baseSeed)
     this.bounds = bounds
   }
 
-  getSeed(): number {
-    // Return the original seed (rng.seed mutates as generation progresses).
+  getSeed(): string {
+    return this.config.seed
+  }
+
+  getNumericSeed(): number {
     return this.baseSeed
   }
 
   generate(): MapData {
-    const rocks = this.generateRocks(20)
-    const terrain = this.generateTerrain(12)
-    const vegetation = this.generateVegetation(30)
-    const resources = this.generateResources(15)
+    const rockCount = Math.floor(this.config.terrain.rockCount * this.config.terrain.rockDensity)
+    const terrainCount = this.config.terrain.terrainMoundCount
+    const vegCount = Math.floor(
+      (this.config.terrain.vegetation.trees +
+       this.config.terrain.vegetation.grass +
+       this.config.terrain.vegetation.flowers +
+       this.config.terrain.vegetation.bushes) * this.config.terrain.vegetation.density
+    )
+    const resourceCount = Math.floor(
+      (this.config.terrain.resources.herbs + this.config.terrain.resources.ores) *
+      this.config.terrain.resources.density
+    )
+
+    const rocks = this.generateRocks(rockCount)
+    const terrain = this.generateTerrain(terrainCount)
+    const vegetation = this.generateVegetation(vegCount)
+    const resources = this.generateResources(resourceCount)
     const playerSpawn = this.getPlayerSpawn()
 
     return { rocks, terrain, vegetation, resources, playerSpawn }
@@ -92,10 +112,23 @@ export class MapGenerator {
     const chunkSeed = this.baseSeed + chunkX * 73856093 + chunkZ * 19349663
     const chunkRng = new SeededRandom(chunkSeed)
 
-    const rocks = this.generateRocksInChunk(chunkX, chunkZ, chunkRng, 8)
-    const terrain = this.generateTerrainInChunk(chunkX, chunkZ, chunkRng, 6)
-    const vegetation = this.generateVegetationInChunk(chunkX, chunkZ, chunkRng, 15)
-    const resources = this.generateResourcesInChunk(chunkX, chunkZ, chunkRng, 5)
+    const rockCount = Math.floor(this.config.terrain.rockCount * this.config.terrain.rockDensity / 3)
+    const terrainCount = Math.floor(this.config.terrain.terrainMoundCount / 2)
+    const vegCount = Math.floor(
+      (this.config.terrain.vegetation.trees +
+       this.config.terrain.vegetation.grass +
+       this.config.terrain.vegetation.flowers +
+       this.config.terrain.vegetation.bushes) * this.config.terrain.vegetation.density / 2
+    )
+    const resourceCount = Math.floor(
+      (this.config.terrain.resources.herbs + this.config.terrain.resources.ores) *
+      this.config.terrain.resources.density / 3
+    )
+
+    const rocks = this.generateRocksInChunk(chunkX, chunkZ, chunkRng, rockCount)
+    const terrain = this.generateTerrainInChunk(chunkX, chunkZ, chunkRng, terrainCount)
+    const vegetation = this.generateVegetationInChunk(chunkX, chunkZ, chunkRng, vegCount)
+    const resources = this.generateResourcesInChunk(chunkX, chunkZ, chunkRng, resourceCount)
 
     return {
       rocks,

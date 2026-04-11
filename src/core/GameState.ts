@@ -16,7 +16,7 @@ export interface GameCombatState {
 }
 
 export interface GameWorldState {
-  seed: number
+  seed: string
   currentChunkX: number
   currentChunkZ: number
 }
@@ -27,7 +27,7 @@ export interface GameState {
   world: GameWorldState
 }
 
-export function createInitialGameState(seed: number, currentWeaponType: WeaponType): GameState {
+export function createInitialGameState(seed: string, currentWeaponType: WeaponType): GameState {
   return {
     resources: {
       gold: 0,

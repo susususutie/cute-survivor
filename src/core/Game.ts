@@ -3,7 +3,7 @@ import { Player } from '../entities/Player'
 import { BulletManager } from '../systems/BulletSystem'
 import { EnemyManager, EnemyType } from '../entities/Enemy'
 import type { EnemyConfig } from '../entities/Enemy'
-import { MapGenerator } from '../systems/MapGenerator'
+import { MapGenerator, SeededRandom } from '../systems/MapGenerator'
 import type { MapData, Vegetation } from '../systems/MapGenerator'
 import { ItemManager, ItemType } from '../systems/ItemSystem'
 import { UIManager } from '../systems/UIManager'
@@ -16,6 +16,9 @@ import { MiniMap } from '../systems/MiniMap'
 import { SettingsUI } from '../systems/SettingsUI'
 import { DefenseMode } from './DefenseMode'
 import { createInitialGameState, type GameState } from './GameState'
+import { StartMenuManager } from '../systems/StartMenuManager'
+import { type WorldConfig } from './WorldConfig'
+import type { SaveData } from '../systems/SaveSystem'
 
 export class Game {
   private static readonly LEGACY_FIRE_RATE = 0.3
@@ -38,6 +41,7 @@ export class Game {
   private enemySpawnTimer = 0
   private isPaused = false
   private isGameOver = false
+  private isInMenu = false
   private terrainChunks = new Map<string, THREE.Group>()
   private chunkSize = 24
   private loadDistance = 2
@@ -51,6 +55,16 @@ export class Game {
   private defenseMode!: DefenseMode
   private isDefenseMode = false
   private state!: GameState
+  private worldConfig!: WorldConfig
+  private startMenuManager!: StartMenuManager
+  private currentSlotIndex = -1
+  private monsterRNG!: SeededRandom
+  private effectParticles: THREE.Points[] = []
+  private eventHandlers: {
+    mouseDown: ((e: MouseEvent) => void) | null
+    keyDown: ((e: KeyboardEvent) => void) | null
+    resize: (() => void) | null
+  } = { mouseDown: null, keyDown: null, resize: null }
 
   constructor() {
     this.scene = new THREE.Scene()
@@ -77,17 +91,61 @@ export class Game {
     // Keep a concrete state object from construction time so tests/debugging can
     // read defaults before init() wires up the runtime systems.
     this.state = createInitialGameState(Date.now(), WeaponType.Pistol)
+
+    this.boot()
   }
 
-  init(): void {
+  boot(): void {
+    this.saveSystem = new SaveSystem()
+    this.startMenuManager = new StartMenuManager(this.saveSystem)
+
+    this.startMenuManager.onContinue = (saveData: SaveData) => {
+      this.currentSlotIndex = saveData.slotIndex
+      this.worldConfig = saveData.world.worldConfig
+      this.state.world.seed = saveData.world.seed
+      this.initGameplay(saveData)
+    }
+
+    this.startMenuManager.onStart = (config: WorldConfig, slotIndex: number) => {
+      this.currentSlotIndex = slotIndex
+      this.worldConfig = config
+      this.state.world.seed = config.seed
+      this.initGameplay()
+    }
+
+    this.startMenuManager.showStartMenu()
+    this.isInMenu = true
+    this.animate()
+  }
+
+  initGameplay(savedData?: SaveData): void {
+    // Hide the start menu first
+    this.startMenuManager.hide()
+
+    this.isInMenu = false
+    this.isPaused = false
+    this.isGameOver = false
+    this.isDefenseMode = false
+    this.saveTimer = 0
+    this.enemySpawnTimer = 0
+    this.lastShotTime = 0
+
+    // Initialize monster RNG for spawning (separate from terrain)
+    this.monsterRNG = new SeededRandom(Date.now())
+
+    // Initialize state if not continuing
+    if (!savedData) {
+      this.state = createInitialGameState(this.worldConfig.seed, WeaponType.Pistol)
+    }
+
     this.uiManager = new UIManager()
     this.audioManager = new AudioManager()
     this.inventory = new Inventory()
     this.weaponProficiency = new WeaponProficiency()
-    this.saveSystem = new SaveSystem()
     this.miniMap = new MiniMap(this.bounds * 2)
     this.settingsUI = new SettingsUI()
     this.playerWeapon = new Weapon(this.state.combat.currentWeaponType)
+
     this.defenseMode = new DefenseMode(new THREE.Vector3(0, 0, 0), 30, (config, position) => {
       this.enemyManager.spawnAtWithCallback(
         config,
@@ -130,9 +188,244 @@ export class Game {
     this.spawnInitialEnemies()
     this.handleInput()
     this.handleResize()
-    this.tryLoadGame()
-    this.animate()
+
+    if (savedData) {
+      this.applySaveData(savedData)
+    }
+
+    this.uiManager.onSave = () => {
+      this.saveGame()
+    }
+
+    this.settingsUI.onSave = () => {
+      this.saveGame()
+    }
+
+    this.settingsUI.onReturnToMenu = () => {
+      this.returnToMenu()
+    }
+
     this.audioManager.startBGM()
+  }
+
+  private cleanupGame(): void {
+    // Remove player
+    if (this.player) {
+      this.scene.remove(this.player.mesh)
+    }
+
+    // Remove all terrain chunks
+    for (const [, chunk] of this.terrainChunks) {
+      this.scene.remove(chunk)
+      chunk.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          obj.geometry.dispose()
+          if (obj.material instanceof THREE.Material) {
+            obj.material.dispose()
+          }
+        }
+      })
+    }
+    this.terrainChunks.clear()
+
+    // Remove ground and grid
+    const gridHelper = this.scene.getObjectByName('groundGrid')
+    if (gridHelper) this.scene.remove(gridHelper)
+    const groundPlane = this.scene.getObjectByName('groundPlane')
+    if (groundPlane) this.scene.remove(groundPlane)
+
+    // Remove effect particles
+    for (const p of this.effectParticles) {
+      this.scene.remove(p)
+      if (p.geometry) p.geometry.dispose()
+      if (p.material) (p.material as THREE.Material).dispose()
+    }
+    this.effectParticles = []
+
+    // Clear scene objects added directly (vegetation, rocks, resources from main map)
+    const toRemove: THREE.Object3D[] = []
+    this.scene.traverse((obj) => {
+      if (obj instanceof THREE.Mesh || obj instanceof THREE.Points) {
+        const name = obj.name || ''
+        if (name.startsWith('rock_') || name.startsWith('veg_') || name.startsWith('res_')) {
+          toRemove.push(obj)
+        }
+      }
+    })
+    for (const obj of toRemove) {
+      this.scene.remove(obj)
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry.dispose()
+        if (obj.material instanceof THREE.Material) {
+          obj.material.dispose()
+        }
+      }
+    }
+
+    // Remove enemies and their meshes
+    if (this.enemyManager) {
+      const enemies = this.enemyManager.getEnemies()
+      for (const enemy of enemies) {
+        this.scene.remove(enemy.mesh)
+      }
+    }
+
+    // Clear bullets
+    if (this.bulletManager) {
+      const bullets = this.bulletManager.getBullets()
+      for (const bullet of bullets) {
+        this.scene.remove(bullet.mesh)
+      }
+    }
+    if (this.enemyBulletManager) {
+      const bullets = this.enemyBulletManager.getBullets()
+      for (const bullet of bullets) {
+        this.scene.remove(bullet.mesh)
+      }
+    }
+
+    // Remove UI elements
+    if (this.uiManager) {
+      this.uiManager.hidePauseMenu()
+      this.uiManager.hideGameOver()
+      this.uiManager.updateDefenseMode(false)
+    }
+
+    if (this.settingsUI) {
+      this.settingsUI.hide()
+    }
+
+    // Remove HUD
+    const hud = document.getElementById('hud')
+    if (hud) hud.remove()
+    const pauseMenu = document.getElementById('pause-menu')
+    if (pauseMenu) pauseMenu.remove()
+    const gameOver = document.getElementById('game-over')
+    if (gameOver) gameOver.remove()
+    const defenseHud = document.getElementById('defense-hud')
+    if (defenseHud) defenseHud.remove()
+
+    // Remove defense HUD from UIManager
+    this.uiManager?.updateDefenseMode(false)
+
+    // Remove event listeners
+    if (this.eventHandlers.mouseDown) {
+      window.removeEventListener('mousedown', this.eventHandlers.mouseDown)
+      this.eventHandlers.mouseDown = null
+    }
+    if (this.eventHandlers.keyDown) {
+      window.removeEventListener('keydown', this.eventHandlers.keyDown)
+      this.eventHandlers.keyDown = null
+    }
+    if (this.eventHandlers.resize) {
+      window.removeEventListener('resize', this.eventHandlers.resize)
+      this.eventHandlers.resize = null
+    }
+  }
+
+  private returnToMenu(): void {
+    this.cleanupGame()
+    this.isInMenu = true
+    this.startMenuManager.showStartMenu()
+  }
+
+  private applySaveData(saveData: SaveData): void {
+    // Restore player state
+    this.player.state.hp = saveData.player.hp
+    this.player.state.position.x = saveData.player.position.x
+    this.player.state.position.y = saveData.player.position.y
+    this.player.state.position.z = saveData.player.position.z
+    this.player.state.rotation = saveData.player.rotation
+    // Move player mesh to saved position
+    this.player.mesh.position.set(saveData.player.position.x, saveData.player.position.y, saveData.player.position.z)
+    this.player.mesh.rotation.y = saveData.player.rotation
+
+    // Restore resources
+    this.state.resources.gold = saveData.player.gold
+    this.state.resources.herbs = saveData.player.herbs
+    this.state.resources.ores = saveData.player.ores
+    this.state.resources.gunpowder = saveData.player.gunpowder
+    this.state.resources.lightAmmo = saveData.player.lightAmmo
+    this.state.resources.heavyAmmo = saveData.player.heavyAmmo
+
+    // Restore combat state
+    this.state.combat.ammo = saveData.player.ammo
+    this.state.combat.maxAmmo = saveData.player.maxAmmo ?? this.state.combat.maxAmmo
+    const loadedWeaponType = saveData.player.currentWeaponType
+    this.state.combat.currentWeaponType = loadedWeaponType !== undefined &&
+      (WeaponType as Record<string, string>)[loadedWeaponType] !== undefined
+      ? loadedWeaponType
+      : WeaponType.Pistol
+    this.playerWeapon = new Weapon(this.state.combat.currentWeaponType)
+
+    // Restore world state
+    this.state.world.currentChunkX = saveData.world.currentChunkX
+    this.state.world.currentChunkZ = saveData.world.currentChunkZ
+
+    // Restore inventory
+    if (saveData.player.inventory) {
+      // Reset all items to 0
+      const allItems = this.inventory.getAllItems()
+      allItems.forEach((_, key) => {
+        this.inventory.removeItem(key, this.inventory.getItemCount(key))
+      })
+      if (saveData.player.inventory.items) {
+        for (const [itemType, count] of saveData.player.inventory.items) {
+          for (let i = 0; i < count; i++) {
+            this.inventory.addItem(itemType as ItemType, 1)
+          }
+        }
+      }
+    }
+  }
+
+  private saveGame(): void {
+    if (this.currentSlotIndex < 0) return
+
+    this.saveSystem.saveGame({
+      player: {
+        hp: this.player.state.hp,
+        maxHp: this.player.state.maxHp,
+        speed: this.player.state.speed,
+        position: {
+          x: this.player.state.position.x,
+          y: this.player.state.position.y,
+          z: this.player.state.position.z
+        },
+        rotation: this.player.state.rotation
+      },
+      resources: { ...this.state.resources },
+      combat: { ...this.state.combat },
+      inventory: this.inventory,
+      world: {
+        seed: this.worldConfig.seed,
+        currentChunkX: this.state.world.currentChunkX,
+        currentChunkZ: this.state.world.currentChunkZ,
+        worldConfig: this.worldConfig
+      },
+      slotIndex: this.currentSlotIndex
+    })
+
+    // Show save notification
+    const notification = document.createElement('div')
+    notification.textContent = '游戏已保存'
+    notification.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(68, 170, 136, 0.95);
+      color: white;
+      padding: 16px 32px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 18px;
+      font-weight: bold;
+      z-index: 1000;
+      pointer-events: none;
+    `
+    document.body.appendChild(notification)
+    setTimeout(() => { notification.remove(); }, 1500)
   }
 
   // Back-compat getters (used by existing tests and handy for debugging).
@@ -164,7 +457,7 @@ export class Game {
   }
 
   private generateMap(): void {
-    this.mapGenerator = new MapGenerator(this.state.world.seed, this.bounds)
+    this.mapGenerator = new MapGenerator(this.worldConfig, this.bounds)
     this.mapData = this.mapGenerator.generate()
   }
 
@@ -504,14 +797,6 @@ export class Game {
   }
 
   private spawnEnemyNearPlayer(playerPos: THREE.Vector3): void {
-    const enemyTypes: EnemyType[] = [
-      EnemyType.Goblin,
-      EnemyType.Orc,
-      EnemyType.Slime,
-      EnemyType.Bat,
-      EnemyType.Skeleton,
-      EnemyType.Mushroom
-    ]
     const colors: Record<EnemyType, number> = {
       [EnemyType.Goblin]: 0x44aa44,
       [EnemyType.Orc]: 0x665533,
@@ -520,65 +805,38 @@ export class Game {
       [EnemyType.Skeleton]: 0xddddcc,
       [EnemyType.Mushroom]: 0xff6644
     }
-    const stats: Record<
-      EnemyType,
-      {
-        hp: number
-        speed: number
-        damage: number
-        detectRange: number
-        attackRange: number
-        hasRangedAttack?: boolean
-        rangedAttackRange?: number
-        rangedAttackDamage?: number
-        rangedAttackCooldown?: number
+
+    // Weighted random selection based on worldConfig
+    const types = Object.keys(this.worldConfig.monster.types) as EnemyType[]
+    const weights = types.map(t => this.worldConfig.monster.types[t].spawnWeight)
+    const totalWeight = weights.reduce((a, b) => a + b, 0)
+    let random = this.monsterRNG.next() * totalWeight
+    let selectedType = types[0]
+    for (let i = 0; i < types.length; i++) {
+      random -= weights[i]
+      if (random <= 0) {
+        selectedType = types[i]
+        break
       }
-    > = {
-      [EnemyType.Goblin]: {
-        hp: 40,
-        speed: 3.5,
-        damage: 8,
-        detectRange: 12,
-        attackRange: 1.2,
-        hasRangedAttack: true,
-        rangedAttackRange: 12,
-        rangedAttackDamage: 8,
-        rangedAttackCooldown: 2
-      },
-      [EnemyType.Orc]: { hp: 80, speed: 2, damage: 15, detectRange: 10, attackRange: 1.5 },
-      [EnemyType.Slime]: { hp: 30, speed: 2.5, damage: 5, detectRange: 8, attackRange: 1 },
-      [EnemyType.Bat]: { hp: 20, speed: 5, damage: 4, detectRange: 15, attackRange: 0.8 },
-      [EnemyType.Skeleton]: {
-        hp: 35,
-        speed: 2.8,
-        damage: 10,
-        detectRange: 14,
-        attackRange: 1.0,
-        hasRangedAttack: true,
-        rangedAttackRange: 15,
-        rangedAttackDamage: 12,
-        rangedAttackCooldown: 2.5
-      },
-      [EnemyType.Mushroom]: { hp: 50, speed: 1.5, damage: 8, detectRange: 10, attackRange: 1.5 }
     }
 
-    const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)]
+    const typeConfig = this.worldConfig.monster.types[selectedType]
     const config: EnemyConfig = {
-      type,
-      hp: stats[type].hp,
-      speed: stats[type].speed,
-      damage: stats[type].damage,
-      detectRange: stats[type].detectRange,
-      attackRange: stats[type].attackRange,
-      color: colors[type],
-      hasRangedAttack: stats[type].hasRangedAttack,
-      rangedAttackRange: stats[type].rangedAttackRange,
-      rangedAttackDamage: stats[type].rangedAttackDamage,
-      rangedAttackCooldown: stats[type].rangedAttackCooldown
+      type: selectedType,
+      hp: typeConfig.hp,
+      speed: typeConfig.speed,
+      damage: typeConfig.damage,
+      detectRange: typeConfig.detectRange,
+      attackRange: typeConfig.attackRange,
+      color: colors[selectedType],
+      hasRangedAttack: typeConfig.hasRangedAttack,
+      rangedAttackRange: typeConfig.rangedAttackRange,
+      rangedAttackDamage: typeConfig.rangedAttackDamage,
+      rangedAttackCooldown: typeConfig.rangedAttackCooldown
     }
 
-    const angle = Math.random() * Math.PI * 2
-    const distance = 15 + Math.random() * 20
+    const angle = this.monsterRNG.next() * Math.PI * 2
+    const distance = 15 + this.monsterRNG.next() * 20
     const x = playerPos.x + Math.cos(angle) * distance
     const z = playerPos.z + Math.sin(angle) * distance
 
@@ -591,7 +849,15 @@ export class Game {
   }
 
   private handleInput(): void {
-    window.addEventListener('mousedown', () => {
+    // Remove old event listeners if they exist
+    if (this.eventHandlers.mouseDown) {
+      window.removeEventListener('mousedown', this.eventHandlers.mouseDown)
+    }
+    if (this.eventHandlers.keyDown) {
+      window.removeEventListener('keydown', this.eventHandlers.keyDown)
+    }
+
+    this.eventHandlers.mouseDown = (_e: MouseEvent) => {
       if (this.isPaused || this.isGameOver) return
 
       const now = performance.now() / 1000
@@ -628,9 +894,9 @@ export class Game {
         }
         this.audioManager.playShoot()
       }
-    })
+    }
 
-    window.addEventListener('keydown', (e) => {
+    this.eventHandlers.keyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (this.isGameOver) return
         this.isPaused = !this.isPaused
@@ -655,7 +921,10 @@ export class Game {
         e.preventDefault()
         this.toggleDefenseMode()
       }
-    })
+    }
+
+    window.addEventListener('mousedown', this.eventHandlers.mouseDown)
+    window.addEventListener('keydown', this.eventHandlers.keyDown)
   }
 
   private switchWeapon(direction: number): void {
@@ -683,30 +952,9 @@ export class Game {
     }
   }
 
-  private tryLoadGame(): void {
-    const saveData = this.saveSystem.loadGame()
-    if (saveData) {
-      this.player.state.hp = saveData.player.hp
-      this.state.resources.gold = saveData.player.gold
-      this.state.resources.herbs = saveData.player.herbs
-      this.state.resources.ores = saveData.player.ores
-      this.state.resources.gunpowder = saveData.player.gunpowder
-      this.state.resources.lightAmmo = saveData.player.lightAmmo
-      this.state.resources.heavyAmmo = saveData.player.heavyAmmo
-      this.state.combat.ammo = saveData.player.ammo
-      this.state.combat.maxAmmo = saveData.player.maxAmmo ?? this.state.combat.maxAmmo
-      const loadedWeaponType = saveData.player.currentWeaponType
-      this.state.combat.currentWeaponType = loadedWeaponType !== undefined &&
-        (WeaponType as Record<string, string>)[loadedWeaponType] !== undefined
-        ? loadedWeaponType
-        : WeaponType.Pistol
-      this.playerWeapon = new Weapon(this.state.combat.currentWeaponType)
-      this.state.world.currentChunkX = saveData.world.currentChunkX
-      this.state.world.currentChunkZ = saveData.world.currentChunkZ
-    }
-  }
-
   private autoSave(): void {
+    if (this.currentSlotIndex < 0) return
+
     this.saveSystem.saveGame({
       player: {
         hp: this.player.state.hp,
@@ -723,21 +971,29 @@ export class Game {
       combat: { ...this.state.combat },
       inventory: this.inventory,
       world: {
-        seed: String(this.mapGenerator.getSeed()),
+        seed: this.worldConfig.seed,
         currentChunkX: this.state.world.currentChunkX,
-        currentChunkZ: this.state.world.currentChunkZ
-      }
+        currentChunkZ: this.state.world.currentChunkZ,
+        worldConfig: this.worldConfig
+      },
+      slotIndex: this.currentSlotIndex
     })
   }
 
   private handleResize(): void {
-    window.addEventListener('resize', () => {
+    if (this.eventHandlers.resize) {
+      window.removeEventListener('resize', this.eventHandlers.resize)
+    }
+
+    this.eventHandlers.resize = () => {
       const aspect = window.innerWidth / window.innerHeight
       this.camera.aspect = aspect
       this.camera.updateProjectionMatrix()
 
       this.renderer.setSize(window.innerWidth, window.innerHeight)
-    })
+    }
+
+    window.addEventListener('resize', this.eventHandlers.resize)
   }
 
   private updateCamera(): void {
@@ -753,7 +1009,7 @@ export class Game {
   private animate = (): void => {
     requestAnimationFrame(this.animate)
 
-    if (this.isPaused || this.isGameOver) {
+    if (this.isPaused || this.isGameOver || this.isInMenu) {
       this.renderer.render(this.scene, this.camera)
       return
     }
@@ -843,8 +1099,6 @@ export class Game {
       }
     }
   }
-
-  private effectParticles: THREE.Points[] = []
 
   private createKillEffect(position: THREE.Vector3): void {
     const particleCount = 50

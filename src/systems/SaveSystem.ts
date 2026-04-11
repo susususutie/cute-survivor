@@ -1,6 +1,7 @@
 import { Inventory } from '../core/Inventory'
 import type { ItemType } from './ItemSystem'
 import type { WeaponType } from '../core/Weapon'
+import type { WorldConfig } from '../core/WorldConfig'
 
 export interface PlayerSaveData {
   hp: number
@@ -27,22 +28,27 @@ export interface WorldSaveData {
   seed: string
   currentChunkX: number
   currentChunkZ: number
+  worldConfig: WorldConfig
 }
 
 export interface SaveData {
   version: string
   timestamp: number
+  slotIndex: number
   player: PlayerSaveData
   world: WorldSaveData
 }
 
 export interface SaveInfo {
+  slotIndex: number
   timestamp: number
   version: string
   hasData: boolean
+  seedPreview: string
 }
 
 export interface SaveInput {
+  slotIndex: number
   player: {
     hp: number
     maxHp: number
@@ -68,11 +74,13 @@ export interface SaveInput {
     seed: string
     currentChunkX: number
     currentChunkZ: number
+    worldConfig: WorldConfig
   }
 }
 
-const SAVE_KEY = 'cute_survivor_save'
-const SAVE_VERSION = '1.0.0'
+const MAX_SAVE_SLOTS = 6
+const SAVE_KEY_PREFIX = 'cute_survivor_save_'
+const SAVE_VERSION = '1.1.0'
 
 export class SaveSystem {
   private localStorage: Storage
@@ -81,12 +89,17 @@ export class SaveSystem {
     this.localStorage = localStorage
   }
 
+  private getSaveKey(slotIndex: number): string {
+    return `${SAVE_KEY_PREFIX}${slotIndex}`
+  }
+
   saveGame(input: SaveInput): boolean {
     try {
       const invData = input.inventory.serialize()
       const saveData: SaveData = {
         version: SAVE_VERSION,
         timestamp: Date.now(),
+        slotIndex: input.slotIndex,
         player: {
           hp: input.player.hp,
           maxHp: input.player.maxHp,
@@ -113,11 +126,12 @@ export class SaveSystem {
         world: {
           seed: input.world.seed,
           currentChunkX: input.world.currentChunkX,
-          currentChunkZ: input.world.currentChunkZ
+          currentChunkZ: input.world.currentChunkZ,
+          worldConfig: input.world.worldConfig
         }
       }
 
-      this.localStorage.setItem(SAVE_KEY, JSON.stringify(saveData))
+      this.localStorage.setItem(this.getSaveKey(input.slotIndex), JSON.stringify(saveData))
       return true
     } catch {
       console.error('Failed to save game')
@@ -125,9 +139,9 @@ export class SaveSystem {
     }
   }
 
-  loadGame(): SaveData | null {
+  getSave(slotIndex: number): SaveData | null {
     try {
-      const data = this.localStorage.getItem(SAVE_KEY)
+      const data = this.localStorage.getItem(this.getSaveKey(slotIndex))
       if (!data) {
         return null
       }
@@ -146,9 +160,14 @@ export class SaveSystem {
     }
   }
 
-  deleteSave(): boolean {
+  // Legacy method - loads from slot 0 for backward compatibility
+  loadGame(): SaveData | null {
+    return this.getSave(0)
+  }
+
+  deleteSave(slotIndex: number): boolean {
     try {
-      this.localStorage.removeItem(SAVE_KEY)
+      this.localStorage.removeItem(this.getSaveKey(slotIndex))
       return true
     } catch (e) {
       console.error('Failed to delete save:', e)
@@ -156,26 +175,41 @@ export class SaveSystem {
     }
   }
 
-  getSaveInfo(): SaveInfo {
+  getSaveInfo(slotIndex: number): SaveInfo {
     try {
-      const data = this.localStorage.getItem(SAVE_KEY)
+      const data = this.localStorage.getItem(this.getSaveKey(slotIndex))
       if (!data) {
-        return { timestamp: 0, version: '', hasData: false }
+        return { slotIndex, timestamp: 0, version: '', hasData: false, seedPreview: '' }
       }
 
       const saveData: SaveData = JSON.parse(data)
       return {
+        slotIndex,
         timestamp: saveData.timestamp,
         version: saveData.version,
-        hasData: true
+        hasData: true,
+        seedPreview: saveData.world.seed.substring(0, 8)
       }
     } catch {
-      return { timestamp: 0, version: '', hasData: false }
+      return { slotIndex, timestamp: 0, version: '', hasData: false, seedPreview: '' }
     }
   }
 
+  // Legacy method - checks slot 0
   hasSave(): boolean {
-    return this.getSaveInfo().hasData
+    return this.getSaveInfo(0).hasData
+  }
+
+  getAllSaves(): SaveInfo[] {
+    const saves: SaveInfo[] = []
+    for (let i = 0; i < MAX_SAVE_SLOTS; i++) {
+      saves.push(this.getSaveInfo(i))
+    }
+    return saves
+  }
+
+  getMaxSlots(): number {
+    return MAX_SAVE_SLOTS
   }
 }
 

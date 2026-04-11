@@ -1,5 +1,7 @@
 import * as THREE from 'three'
-import { EnemyType } from '../entities/Enemy'
+import type { EnemyType } from '../entities/Enemy'
+import { SeededRandom } from './MapGenerator'
+import type { DropConfig } from '../core/WorldConfig'
 
 export enum ItemType {
   Gold = 'gold',
@@ -127,9 +129,18 @@ export class Item {
 export class ItemManager {
   private items: Item[] = []
   private scene: THREE.Scene
+  private dropConfig: DropConfig
+  private dropRNG: SeededRandom
 
   constructor(scene: THREE.Scene) {
     this.scene = scene
+    this.dropConfig = {}
+    this.dropRNG = new SeededRandom(Date.now())
+  }
+
+  initDropConfig(config: DropConfig, seed: number): void {
+    this.dropConfig = config
+    this.dropRNG = new SeededRandom(seed)
   }
 
   spawn(type: ItemType, position: THREE.Vector3): Item {
@@ -140,50 +151,19 @@ export class ItemManager {
   }
 
   spawnAtEnemyDeath(position: THREE.Vector3, enemyType: EnemyType): void {
-    const drops: { type: ItemType; chance: number }[] = []
-
-    switch (enemyType) {
-      case EnemyType.Goblin:
-        drops.push({ type: ItemType.Gold, chance: 0.5 })
-        drops.push({ type: ItemType.Ammo, chance: 0.3 })
-        drops.push({ type: ItemType.HealthPotion, chance: 0.15 })
-        break
-      case EnemyType.Orc:
-        drops.push({ type: ItemType.Gold, chance: 0.6 })
-        drops.push({ type: ItemType.HealthPotion, chance: 0.25 })
-        drops.push({ type: ItemType.Ammo, chance: 0.15 })
-        break
-      case EnemyType.Slime:
-        drops.push({ type: ItemType.HealthPotion, chance: 0.4 })
-        drops.push({ type: ItemType.SpeedPotion, chance: 0.3 })
-        drops.push({ type: ItemType.Gold, chance: 0.3 })
-        break
-      case EnemyType.Bat:
-        drops.push({ type: ItemType.SpeedPotion, chance: 0.4 })
-        drops.push({ type: ItemType.Gold, chance: 0.35 })
-        drops.push({ type: ItemType.Ammo, chance: 0.25 })
-        break
-      case EnemyType.Skeleton:
-        drops.push({ type: ItemType.Gold, chance: 0.5 })
-        drops.push({ type: ItemType.Gunpowder, chance: 0.3 })
-        drops.push({ type: ItemType.LightAmmo, chance: 0.2 })
-        break
-      case EnemyType.Mushroom:
-        drops.push({ type: ItemType.HealthPotion, chance: 0.4 })
-        drops.push({ type: ItemType.Herb, chance: 0.35 })
-        drops.push({ type: ItemType.Gold, chance: 0.25 })
-        break
-    }
-
-    const roll = Math.random()
-    let cumulative = 0
-    for (const drop of drops) {
-      cumulative += drop.chance
-      if (roll < cumulative) {
-        this.spawn(drop.type, position.clone())
-        return
+    const drops = this.dropConfig[enemyType]
+    if (drops && drops.length > 0) {
+      const roll = this.dropRNG.next()
+      let cumulative = 0
+      for (const drop of drops) {
+        cumulative += drop.chance
+        if (roll < cumulative) {
+          this.spawn(drop.itemType as ItemType, position.clone())
+          return
+        }
       }
     }
+    // Fallback spawn if no config or roll didn't hit
     this.spawn(ItemType.Gold, position.clone())
   }
 
