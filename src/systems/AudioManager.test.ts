@@ -80,11 +80,9 @@ describe('AudioManager', () => {
     })
 
     it('should register a once click listener', () => {
-      expect(document.addEventListener).toHaveBeenCalledWith(
-        'click',
-        expect.any(Function),
-        { once: true }
-      )
+      expect(document.addEventListener).toHaveBeenCalledWith('click', expect.any(Function), {
+        once: true
+      })
     })
 
     it('should start with null audio context', () => {

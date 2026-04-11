@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { SaveSystem, SaveData } from './SaveSystem'
 import { Inventory } from '../core/Inventory'
+import { ItemType } from './ItemSystem'
+import { WeaponType } from '../core/Weapon'
 
 describe('SaveSystem', () => {
   let saveSystem: SaveSystem
@@ -23,9 +25,9 @@ describe('SaveSystem', () => {
   describe('saveGame', () => {
     it('should save game data to localStorage', () => {
       const inventory = new Inventory()
-      inventory.addItem('ore' as any, 10)
+      inventory.addItem(ItemType.Ore, 10)
 
-      const playerState = {
+      const player = {
         hp: 100,
         maxHp: 100,
         speed: 8,
@@ -33,20 +35,28 @@ describe('SaveSystem', () => {
         rotation: 1.5
       }
 
-      const result = saveSystem.saveGame(
-        playerState,
-        500, // gold
-        20, // herbs
-        15, // ores
-        30, // ammo
-        0, // lightAmmo
-        0, // heavyAmmo
-        0, // gunpowder
+      const result = saveSystem.saveGame({
+        player,
+        resources: {
+          gold: 500,
+          herbs: 20,
+          ores: 15,
+          gunpowder: 0,
+          lightAmmo: 0,
+          heavyAmmo: 0
+        },
+        combat: {
+          ammo: 30,
+          maxAmmo: 30,
+          currentWeaponType: WeaponType.Pistol
+        },
         inventory,
-        'test_seed',
-        0,
-        0
-      )
+        world: {
+          seed: 'test_seed',
+          currentChunkX: 0,
+          currentChunkZ: 0
+        }
+      })
 
       expect(result).toBe(true)
       expect(mockStorage.cute_survivor_save).toBeDefined()
@@ -54,7 +64,7 @@ describe('SaveSystem', () => {
 
     it('should include version and timestamp', () => {
       const inventory = new Inventory()
-      const playerState = {
+      const player = {
         hp: 100,
         maxHp: 100,
         speed: 8,
@@ -62,13 +72,24 @@ describe('SaveSystem', () => {
         rotation: 0
       }
 
-      saveSystem.saveGame(
-        playerState,
-        0, 0, 0, 0, 0, 0, 0,
+      saveSystem.saveGame({
+        player,
+        resources: {
+          gold: 0,
+          herbs: 0,
+          ores: 0,
+          gunpowder: 0,
+          lightAmmo: 0,
+          heavyAmmo: 0
+        },
+        combat: {
+          ammo: 0,
+          maxAmmo: 30,
+          currentWeaponType: WeaponType.Pistol
+        },
         inventory,
-        'seed',
-        0, 0
-      )
+        world: { seed: 'seed', currentChunkX: 0, currentChunkZ: 0 }
+      })
 
       const savedData: SaveData = JSON.parse(mockStorage.cute_survivor_save)
       expect(savedData.version).toBe('1.0.0')

@@ -99,9 +99,11 @@ export class Item {
     if (this.mesh.geometry) this.mesh.geometry.dispose()
     if (this.mesh.material) {
       if (Array.isArray(this.mesh.material)) {
-        this.mesh.material.forEach((m) => { m.dispose(); })
+        this.mesh.material.forEach((m) => {
+          m.dispose()
+        })
       } else {
-        (this.mesh.material).dispose()
+        this.mesh.material.dispose()
       }
     }
     // Dispose child meshes (e.g., bottle for potions)
@@ -110,9 +112,11 @@ export class Item {
         if (child.geometry) child.geometry.dispose()
         if (child.material) {
           if (Array.isArray(child.material)) {
-            child.material.forEach((m) => { m.dispose(); })
+            child.material.forEach((m) => {
+              m.dispose()
+            })
           } else {
-            (child.material as THREE.Material).dispose()
+            ;(child.material as THREE.Material).dispose()
           }
         }
       }

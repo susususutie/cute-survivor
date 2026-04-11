@@ -82,9 +82,11 @@ export class Bullet {
     this.mesh.geometry.dispose()
     if (this.mesh.material) {
       if (Array.isArray(this.mesh.material)) {
-        this.mesh.material.forEach((m) => { m.dispose(); })
+        this.mesh.material.forEach((m) => {
+          m.dispose()
+        })
       } else {
-        (this.mesh.material).dispose()
+        this.mesh.material.dispose()
       }
     }
     this.trail.geometry.dispose()

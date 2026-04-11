@@ -93,7 +93,9 @@ export class WeaponProficiency {
     return result
   }
 
-  static deserialize(data: { type: string; kills: number; damage: number; rank: number }[]): WeaponProficiency {
+  static deserialize(
+    data: { type: string; kills: number; damage: number; rank: number }[]
+  ): WeaponProficiency {
     const prof = new WeaponProficiency()
     data.forEach((item) => {
       const type = item.type as WeaponType

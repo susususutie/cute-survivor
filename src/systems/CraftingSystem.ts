@@ -1,49 +1,27 @@
-import { ItemType } from './ItemSystem'
+import type { ItemType } from './ItemSystem'
 import type { Recipe } from '../data/Recipe'
 import { RecipeRegistry } from '../data/Recipe'
 
+export interface ItemStore {
+  addItem(type: ItemType, quantity: number): boolean
+  removeItem(type: ItemType, quantity: number): boolean
+  getItemCount(type: ItemType): number
+  getAllItems(): Map<ItemType, number>
+}
+
 export class CraftingSystem {
-  private inventory: Map<ItemType, number>
+  private store: ItemStore
 
-  constructor() {
-    this.inventory = new Map()
-    this.initInventory()
-  }
-
-  private initInventory(): void {
-    Object.values(ItemType).forEach((type) => {
-      this.inventory.set(type, 0)
-    })
-  }
-
-  setInventory(inventory: Map<ItemType, number>): void {
-    this.inventory = inventory
-  }
-
-  getInventory(): Map<ItemType, number> {
-    return this.inventory
-  }
-
-  addItem(type: ItemType, quantity: number): void {
-    const current = this.inventory.get(type) ?? 0
-    this.inventory.set(type, current + quantity)
-  }
-
-  removeItem(type: ItemType, quantity: number): boolean {
-    const current = this.inventory.get(type) ?? 0
-    if (current < quantity) {
-      return false
-    }
-    this.inventory.set(type, current - quantity)
-    return true
+  constructor(store: ItemStore) {
+    this.store = store
   }
 
   getItemCount(type: ItemType): number {
-    return this.inventory.get(type) ?? 0
+    return this.store.getItemCount(type)
   }
 
   hasMaterials(recipe: Recipe): boolean {
-    return RecipeRegistry.canCraft(recipe, this.inventory)
+    return RecipeRegistry.canCraft(recipe, this.store.getAllItems())
   }
 
   craft(recipeId: string): boolean {
@@ -58,19 +36,19 @@ export class CraftingSystem {
 
     // Consume input materials
     for (const input of recipe.inputs) {
-      this.removeItem(input.type, input.quantity)
+      this.store.removeItem(input.type, input.quantity)
     }
 
     // Produce output items
     for (const output of recipe.outputs) {
-      this.addItem(output.type, output.quantity)
+      this.store.addItem(output.type, output.quantity)
     }
 
     return true
   }
 
   getAvailableRecipes(): Recipe[] {
-    return RecipeRegistry.getAvailableRecipes(this.inventory)
+    return RecipeRegistry.getAvailableRecipes(this.store.getAllItems())
   }
 
   getAllRecipes(): Recipe[] {

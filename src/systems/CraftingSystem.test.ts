@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { CraftingSystem } from './CraftingSystem'
 import { ItemType } from './ItemSystem'
 import { RecipeRegistry } from '../data/Recipe'
+import { Inventory } from '../core/Inventory'
 
 describe('RecipeRegistry', () => {
   it('should have light ammo recipe: 2 Ore -> 10 Light Ammo', () => {
@@ -37,12 +38,14 @@ describe('RecipeRegistry', () => {
 
 describe('CraftingSystem', () => {
   let craftingSystem: CraftingSystem
+  let inventory: Inventory
 
   beforeEach(() => {
-    craftingSystem = new CraftingSystem()
+    inventory = new Inventory()
+    craftingSystem = new CraftingSystem(inventory)
   })
 
-  describe('inventory initialization', () => {
+  describe('inventory initialization (delegated store)', () => {
     it('should initialize all item counts to 0', () => {
       expect(craftingSystem.getItemCount(ItemType.Ore)).toBe(0)
       expect(craftingSystem.getItemCount(ItemType.Herb)).toBe(0)
@@ -52,51 +55,22 @@ describe('CraftingSystem', () => {
     })
   })
 
-  describe('addItem / getItemCount', () => {
-    it('should add items and return correct count', () => {
-      craftingSystem.addItem(ItemType.Ore, 5)
-      expect(craftingSystem.getItemCount(ItemType.Ore)).toBe(5)
-    })
-
-    it('should accumulate items', () => {
-      craftingSystem.addItem(ItemType.Ore, 5)
-      craftingSystem.addItem(ItemType.Ore, 3)
-      expect(craftingSystem.getItemCount(ItemType.Ore)).toBe(8)
-    })
-  })
-
-  describe('removeItem', () => {
-    it('should remove items and return true on success', () => {
-      craftingSystem.addItem(ItemType.Ore, 10)
-      const result = craftingSystem.removeItem(ItemType.Ore, 3)
-      expect(result).toBe(true)
-      expect(craftingSystem.getItemCount(ItemType.Ore)).toBe(7)
-    })
-
-    it('should return false when not enough items', () => {
-      craftingSystem.addItem(ItemType.Ore, 2)
-      const result = craftingSystem.removeItem(ItemType.Ore, 5)
-      expect(result).toBe(false)
-      expect(craftingSystem.getItemCount(ItemType.Ore)).toBe(2)
-    })
-  })
-
   describe('hasMaterials', () => {
     it('should return true when player has enough materials', () => {
-      craftingSystem.addItem(ItemType.Ore, 5)
+      inventory.addItem(ItemType.Ore, 5)
       const recipe = RecipeRegistry.get('light_ammo')!
       expect(craftingSystem.hasMaterials(recipe)).toBe(true)
     })
 
     it('should return false when player lacks materials', () => {
-      craftingSystem.addItem(ItemType.Ore, 1)
+      inventory.addItem(ItemType.Ore, 1)
       const recipe = RecipeRegistry.get('light_ammo')!
       expect(craftingSystem.hasMaterials(recipe)).toBe(false)
     })
 
     it('should check multiple input materials', () => {
-      craftingSystem.addItem(ItemType.Ore, 3)
-      craftingSystem.addItem(ItemType.Gunpowder, 0)
+      inventory.addItem(ItemType.Ore, 3)
+      inventory.addItem(ItemType.Gunpowder, 0)
       const recipe = RecipeRegistry.get('heavy_ammo')!
       expect(craftingSystem.hasMaterials(recipe)).toBe(false)
     })
@@ -104,7 +78,7 @@ describe('CraftingSystem', () => {
 
   describe('craft', () => {
     it('should consume materials and produce outputs for light ammo', () => {
-      craftingSystem.addItem(ItemType.Ore, 10)
+      inventory.addItem(ItemType.Ore, 10)
 
       const result = craftingSystem.craft('light_ammo')
 
@@ -114,8 +88,8 @@ describe('CraftingSystem', () => {
     })
 
     it('should consume multiple materials for heavy ammo', () => {
-      craftingSystem.addItem(ItemType.Ore, 10)
-      craftingSystem.addItem(ItemType.Gunpowder, 5)
+      inventory.addItem(ItemType.Ore, 10)
+      inventory.addItem(ItemType.Gunpowder, 5)
 
       const result = craftingSystem.craft('heavy_ammo')
 
@@ -126,7 +100,7 @@ describe('CraftingSystem', () => {
     })
 
     it('should return false and not consume when insufficient materials', () => {
-      craftingSystem.addItem(ItemType.Ore, 1)
+      inventory.addItem(ItemType.Ore, 1)
 
       const result = craftingSystem.craft('light_ammo')
 
@@ -141,7 +115,7 @@ describe('CraftingSystem', () => {
     })
 
     it('should handle multiple crafts in sequence', () => {
-      craftingSystem.addItem(ItemType.Ore, 10)
+      inventory.addItem(ItemType.Ore, 10)
 
       craftingSystem.craft('light_ammo')
       craftingSystem.craft('light_ammo')
@@ -153,9 +127,9 @@ describe('CraftingSystem', () => {
 
   describe('getAvailableRecipes', () => {
     it('should return recipes that can be crafted', () => {
-      craftingSystem.addItem(ItemType.Ore, 10)
-      craftingSystem.addItem(ItemType.Herb, 10)
-      craftingSystem.addItem(ItemType.Gunpowder, 10)
+      inventory.addItem(ItemType.Ore, 10)
+      inventory.addItem(ItemType.Herb, 5)
+      inventory.addItem(ItemType.Gunpowder, 5)
 
       const available = craftingSystem.getAvailableRecipes()
 

@@ -9,7 +9,6 @@ export interface WaveConfig {
 }
 
 export class DefenseMode {
-  private scene: THREE.Scene
   private spawnCallback: (config: EnemyConfig, position: THREE.Vector3) => void
   private defenseCenter: THREE.Vector3
   private defenseRadius: number
@@ -27,12 +26,10 @@ export class DefenseMode {
   private onPlayerOutOfBounds: (() => void) | null = null
 
   constructor(
-    scene: THREE.Scene,
     defenseCenter: THREE.Vector3,
     defenseRadius: number,
     spawnCallback: (config: EnemyConfig, position: THREE.Vector3) => void
   ) {
-    this.scene = scene
     this.defenseCenter = defenseCenter
     this.defenseRadius = defenseRadius
     this.spawnCallback = spawnCallback

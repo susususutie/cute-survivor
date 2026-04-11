@@ -64,10 +64,17 @@ export class MapGenerator {
   private rng: SeededRandom
   private bounds: number
   private chunkSize = 48
+  private baseSeed: number
 
   constructor(seed: number, bounds: number) {
+    this.baseSeed = seed
     this.rng = new SeededRandom(seed)
     this.bounds = bounds
+  }
+
+  getSeed(): number {
+    // Return the original seed (rng.seed mutates as generation progresses).
+    return this.baseSeed
   }
 
   generate(): MapData {
@@ -81,7 +88,8 @@ export class MapGenerator {
   }
 
   generateChunk(chunkX: number, chunkZ: number): MapData {
-    const chunkSeed = this.rng.seed + chunkX * 73856093 + chunkZ * 19349663
+    // Use the original seed so chunk generation is stable regardless of RNG consumption order.
+    const chunkSeed = this.baseSeed + chunkX * 73856093 + chunkZ * 19349663
     const chunkRng = new SeededRandom(chunkSeed)
 
     const rocks = this.generateRocksInChunk(chunkX, chunkZ, chunkRng, 8)

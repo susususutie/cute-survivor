@@ -109,7 +109,9 @@ export class SettingsUI {
     const qualityBtns = container.querySelectorAll('.quality-btn')
     qualityBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
-        qualityBtns.forEach((b) => { b.classList.remove('active'); })
+        qualityBtns.forEach((b) => {
+          b.classList.remove('active')
+        })
         btn.classList.add('active')
         this.settings.quality = btn.getAttribute('data-quality') as 'low' | 'medium' | 'high'
         this.callbacks.onQualityChange?.(this.settings.quality)

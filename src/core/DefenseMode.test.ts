@@ -1,25 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { DefenseMode } from './DefenseMode'
 import * as THREE from 'three'
-import type { Scene } from 'three'
 import type { EnemyConfig } from '../entities/Enemy'
 
 describe('DefenseMode', () => {
   let defenseMode: DefenseMode
-  let mockScene: Scene
   let mockSpawnCallback: (config: EnemyConfig, position: THREE.Vector3) => void
 
   beforeEach(() => {
-    mockScene = {
-      add: vi.fn()
-    } as unknown as Scene
     mockSpawnCallback = vi.fn()
-    defenseMode = new DefenseMode(
-      mockScene,
-      new THREE.Vector3(0, 0, 0),
-      10,
-      mockSpawnCallback
-    )
+    defenseMode = new DefenseMode(new THREE.Vector3(0, 0, 0), 10, mockSpawnCallback)
   })
 
   describe('initialization', () => {

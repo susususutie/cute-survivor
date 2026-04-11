@@ -1,5 +1,6 @@
 import { Inventory } from '../core/Inventory'
 import type { ItemType } from './ItemSystem'
+import type { WeaponType } from '../core/Weapon'
 
 export interface PlayerSaveData {
   hp: number
@@ -11,10 +12,15 @@ export interface PlayerSaveData {
   herbs: number
   ores: number
   ammo: number
+  maxAmmo?: number
   lightAmmo: number
   heavyAmmo: number
   gunpowder: number
-  inventory: { items: [string, number][]; equipment: { weapon: string | null; armor: string | null } }
+  currentWeaponType?: WeaponType
+  inventory: {
+    items: [string, number][]
+    equipment: { weapon: string | null; armor: string | null }
+  }
 }
 
 export interface WorldSaveData {
@@ -36,6 +42,35 @@ export interface SaveInfo {
   hasData: boolean
 }
 
+export interface SaveInput {
+  player: {
+    hp: number
+    maxHp: number
+    speed: number
+    position: { x: number; y: number; z: number }
+    rotation: number
+  }
+  resources: {
+    gold: number
+    herbs: number
+    ores: number
+    gunpowder: number
+    lightAmmo: number
+    heavyAmmo: number
+  }
+  combat: {
+    ammo: number
+    maxAmmo: number
+    currentWeaponType: WeaponType
+  }
+  inventory: Inventory
+  world: {
+    seed: string
+    currentChunkX: number
+    currentChunkZ: number
+  }
+}
+
 const SAVE_KEY = 'cute_survivor_save'
 const SAVE_VERSION = '1.0.0'
 
@@ -46,38 +81,27 @@ export class SaveSystem {
     this.localStorage = localStorage
   }
 
-  saveGame(
-    playerState: { hp: number; maxHp: number; speed: number; position: { x: number; y: number; z: number }; rotation: number },
-    gold: number,
-    herbs: number,
-    ores: number,
-    ammo: number,
-    lightAmmo: number,
-    heavyAmmo: number,
-    gunpowder: number,
-    inventory: Inventory,
-    seed: string,
-    currentChunkX: number,
-    currentChunkZ: number
-  ): boolean {
+  saveGame(input: SaveInput): boolean {
     try {
-      const invData = inventory.serialize()
+      const invData = input.inventory.serialize()
       const saveData: SaveData = {
         version: SAVE_VERSION,
         timestamp: Date.now(),
         player: {
-          hp: playerState.hp,
-          maxHp: playerState.maxHp,
-          speed: playerState.speed,
-          position: playerState.position,
-          rotation: playerState.rotation,
-          gold,
-          herbs,
-          ores,
-          ammo,
-          lightAmmo,
-          heavyAmmo,
-          gunpowder,
+          hp: input.player.hp,
+          maxHp: input.player.maxHp,
+          speed: input.player.speed,
+          position: input.player.position,
+          rotation: input.player.rotation,
+          gold: input.resources.gold,
+          herbs: input.resources.herbs,
+          ores: input.resources.ores,
+          ammo: input.combat.ammo,
+          maxAmmo: input.combat.maxAmmo,
+          lightAmmo: input.resources.lightAmmo,
+          heavyAmmo: input.resources.heavyAmmo,
+          gunpowder: input.resources.gunpowder,
+          currentWeaponType: input.combat.currentWeaponType,
           inventory: {
             items: invData.items,
             equipment: {
@@ -87,9 +111,9 @@ export class SaveSystem {
           }
         },
         world: {
-          seed,
-          currentChunkX,
-          currentChunkZ
+          seed: input.world.seed,
+          currentChunkX: input.world.currentChunkX,
+          currentChunkZ: input.world.currentChunkZ
         }
       }
 

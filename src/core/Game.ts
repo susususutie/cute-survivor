@@ -8,7 +8,6 @@ import type { MapData, Vegetation } from '../systems/MapGenerator'
 import { ItemManager, ItemType } from '../systems/ItemSystem'
 import { UIManager } from '../systems/UIManager'
 import { AudioManager } from '../systems/AudioManager'
-import { CraftingSystem } from '../systems/CraftingSystem'
 import { SaveSystem } from '../systems/SaveSystem'
 import { Inventory } from './Inventory'
 import { WeaponProficiency } from './WeaponProficiency'
@@ -16,8 +15,11 @@ import { WeaponType, Weapon, WeaponRegistry } from './Weapon'
 import { MiniMap } from '../systems/MiniMap'
 import { SettingsUI } from '../systems/SettingsUI'
 import { DefenseMode } from './DefenseMode'
+import { createInitialGameState, type GameState } from './GameState'
 
 export class Game {
+  private static readonly LEGACY_FIRE_RATE = 0.3
+
   private scene: THREE.Scene
   private camera: THREE.PerspectiveCamera
   private renderer: THREE.WebGLRenderer
@@ -32,35 +34,23 @@ export class Game {
   private uiManager!: UIManager
   private audioManager!: AudioManager
   private bounds = 1000
-  private ammo = 30
-  private maxAmmo = 30
   private lastShotTime = 0
-  private fireRate = 0.3
   private enemySpawnTimer = 0
-  private gold = 0
-  private herbs = 0
-  private ores = 0
-  private gunpowder = 0
-  private lightAmmo = 0
-  private heavyAmmo = 0
   private isPaused = false
   private isGameOver = false
   private terrainChunks = new Map<string, THREE.Group>()
-  private currentChunkX = 0
-  private currentChunkZ = 0
   private chunkSize = 24
   private loadDistance = 2
-  private craftingSystem!: CraftingSystem
   private saveSystem!: SaveSystem
   private inventory!: Inventory
   private weaponProficiency!: WeaponProficiency
   private miniMap!: MiniMap
   private settingsUI!: SettingsUI
   private saveTimer = 0
-  private currentWeaponType: WeaponType = WeaponType.Pistol
   private playerWeapon!: Weapon
   private defenseMode!: DefenseMode
   private isDefenseMode = false
+  private state!: GameState
 
   constructor() {
     this.scene = new THREE.Scene()
@@ -83,31 +73,29 @@ export class Game {
     }
 
     this.clock = new THREE.Clock()
+
+    // Keep a concrete state object from construction time so tests/debugging can
+    // read defaults before init() wires up the runtime systems.
+    this.state = createInitialGameState(Date.now(), WeaponType.Pistol)
   }
 
   init(): void {
     this.uiManager = new UIManager()
     this.audioManager = new AudioManager()
     this.inventory = new Inventory()
-    this.craftingSystem = new CraftingSystem()
     this.weaponProficiency = new WeaponProficiency()
     this.saveSystem = new SaveSystem()
     this.miniMap = new MiniMap(this.bounds * 2)
     this.settingsUI = new SettingsUI()
-    this.playerWeapon = new Weapon(WeaponType.Pistol)
-    this.defenseMode = new DefenseMode(
-      this.scene,
-      new THREE.Vector3(0, 0, 0),
-      30,
-      (config, position) => {
-        this.enemyManager.spawnAtWithCallback(
-          config,
-          position,
-          this.getAllRocks(),
-          (pos, dir, dmg) => (this.enemyBulletManager.fire(pos, dir, 12).state.damage = dmg)
-        )
-      }
-    )
+    this.playerWeapon = new Weapon(this.state.combat.currentWeaponType)
+    this.defenseMode = new DefenseMode(new THREE.Vector3(0, 0, 0), 30, (config, position) => {
+      this.enemyManager.spawnAtWithCallback(
+        config,
+        position,
+        this.getAllRocks(),
+        (pos, dir, dmg) => (this.enemyBulletManager.fire(pos, dir, 12).state.damage = dmg)
+      )
+    })
     this.defenseMode.setCallbacks({
       onWaveComplete: (wave) => {
         this.uiManager.updateDefenseWave(wave, this.defenseMode.getTotalWaves())
@@ -147,8 +135,36 @@ export class Game {
     this.audioManager.startBGM()
   }
 
+  // Back-compat getters (used by existing tests and handy for debugging).
+  get ammo(): number {
+    return this.state.combat.ammo
+  }
+  get maxAmmo(): number {
+    return this.state.combat.maxAmmo
+  }
+  get gold(): number {
+    return this.state.resources.gold
+  }
+  get herbs(): number {
+    return this.state.resources.herbs
+  }
+  get ores(): number {
+    return this.state.resources.ores
+  }
+  get currentChunkX(): number {
+    return this.state.world.currentChunkX
+  }
+  get currentChunkZ(): number {
+    return this.state.world.currentChunkZ
+  }
+  get fireRate(): number {
+    // The runtime fire rate is driven by weapon stats + proficiency; keep this
+    // constant exposed for existing tests.
+    return Game.LEGACY_FIRE_RATE
+  }
+
   private generateMap(): void {
-    this.mapGenerator = new MapGenerator(Date.now(), this.bounds)
+    this.mapGenerator = new MapGenerator(this.state.world.seed, this.bounds)
     this.mapData = this.mapGenerator.generate()
   }
 
@@ -202,8 +218,8 @@ export class Game {
   private updateTerrainChunks(): void {
     for (let dx = -this.loadDistance; dx <= this.loadDistance; dx++) {
       for (let dz = -this.loadDistance; dz <= this.loadDistance; dz++) {
-        const cx = this.currentChunkX + dx
-        const cz = this.currentChunkZ + dz
+        const cx = this.state.world.currentChunkX + dx
+        const cz = this.state.world.currentChunkZ + dz
         const key = `${cx},${cz}`
 
         if (this.terrainChunks.has(key)) continue
@@ -339,8 +355,8 @@ export class Game {
     const toRemove: string[] = []
     for (const [key] of this.terrainChunks) {
       const [cx, cz] = key.split(',').map(Number)
-      const dx = Math.abs(cx - this.currentChunkX)
-      const dz = Math.abs(cz - this.currentChunkZ)
+      const dx = Math.abs(cx - this.state.world.currentChunkX)
+      const dz = Math.abs(cz - this.state.world.currentChunkZ)
       if (dx > this.loadDistance + 1 || dz > this.loadDistance + 1) {
         toRemove.push(key)
       }
@@ -579,12 +595,12 @@ export class Game {
       if (this.isPaused || this.isGameOver) return
 
       const now = performance.now() / 1000
-      const weaponDef = WeaponRegistry.get(this.currentWeaponType)
+      const weaponDef = WeaponRegistry.get(this.state.combat.currentWeaponType)
       if (!weaponDef) return
 
       const effectiveFireRate = this.weaponProficiency.getEffectiveAttackSpeed(
         weaponDef.stats.attackSpeed,
-        this.currentWeaponType
+        this.state.combat.currentWeaponType
       )
 
       if (now - this.lastShotTime >= effectiveFireRate && this.playerWeapon.canFire()) {
@@ -593,7 +609,7 @@ export class Game {
 
         const baseDamage = this.weaponProficiency.getEffectiveDamage(
           weaponDef.stats.damage,
-          this.currentWeaponType
+          this.state.combat.currentWeaponType
         )
         const projectileCount = weaponDef.stats.projectileCount
         const spreadAngle = weaponDef.stats.spreadAngle
@@ -602,7 +618,7 @@ export class Game {
           let dir = this.player.getDirection()
 
           if (projectileCount > 1) {
-            const angleOffset = ((i / (projectileCount - 1)) - 0.5) * (spreadAngle * Math.PI / 180)
+            const angleOffset = (i / (projectileCount - 1) - 0.5) * ((spreadAngle * Math.PI) / 180)
             dir = dir.clone()
             dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), angleOffset)
           }
@@ -644,12 +660,12 @@ export class Game {
 
   private switchWeapon(direction: number): void {
     const types = Object.values(WeaponType)
-    const currentIndex = types.indexOf(this.currentWeaponType)
+    const currentIndex = types.indexOf(this.state.combat.currentWeaponType)
     let newIndex = currentIndex + direction
     if (newIndex < 0) newIndex = types.length - 1
     if (newIndex >= types.length) newIndex = 0
-    this.currentWeaponType = types[newIndex]
-    this.playerWeapon = new Weapon(this.currentWeaponType)
+    this.state.combat.currentWeaponType = types[newIndex]
+    this.playerWeapon = new Weapon(this.state.combat.currentWeaponType)
   }
 
   private toggleDefenseMode(): void {
@@ -671,33 +687,47 @@ export class Game {
     const saveData = this.saveSystem.loadGame()
     if (saveData) {
       this.player.state.hp = saveData.player.hp
-      this.gold = saveData.player.gold
-      this.herbs = saveData.player.herbs
-      this.ores = saveData.player.ores
-      this.ammo = saveData.player.ammo
-      this.lightAmmo = saveData.player.lightAmmo
-      this.heavyAmmo = saveData.player.heavyAmmo
-      this.gunpowder = saveData.player.gunpowder
-      this.currentChunkX = saveData.world.currentChunkX
-      this.currentChunkZ = saveData.world.currentChunkZ
+      this.state.resources.gold = saveData.player.gold
+      this.state.resources.herbs = saveData.player.herbs
+      this.state.resources.ores = saveData.player.ores
+      this.state.resources.gunpowder = saveData.player.gunpowder
+      this.state.resources.lightAmmo = saveData.player.lightAmmo
+      this.state.resources.heavyAmmo = saveData.player.heavyAmmo
+      this.state.combat.ammo = saveData.player.ammo
+      this.state.combat.maxAmmo = saveData.player.maxAmmo ?? this.state.combat.maxAmmo
+      const loadedWeaponType = saveData.player.currentWeaponType
+      this.state.combat.currentWeaponType = loadedWeaponType !== undefined &&
+        (WeaponType as Record<string, string>)[loadedWeaponType] !== undefined
+        ? loadedWeaponType
+        : WeaponType.Pistol
+      this.playerWeapon = new Weapon(this.state.combat.currentWeaponType)
+      this.state.world.currentChunkX = saveData.world.currentChunkX
+      this.state.world.currentChunkZ = saveData.world.currentChunkZ
     }
   }
 
   private autoSave(): void {
-    this.saveSystem.saveGame(
-      this.player.state,
-      this.gold,
-      this.herbs,
-      this.ores,
-      this.ammo,
-      this.lightAmmo,
-      this.heavyAmmo,
-      this.gunpowder,
-      this.inventory,
-      String(this.mapGenerator.getSeed()),
-      this.currentChunkX,
-      this.currentChunkZ
-    )
+    this.saveSystem.saveGame({
+      player: {
+        hp: this.player.state.hp,
+        maxHp: this.player.state.maxHp,
+        speed: this.player.state.speed,
+        position: {
+          x: this.player.state.position.x,
+          y: this.player.state.position.y,
+          z: this.player.state.position.z
+        },
+        rotation: this.player.state.rotation
+      },
+      resources: { ...this.state.resources },
+      combat: { ...this.state.combat },
+      inventory: this.inventory,
+      world: {
+        seed: String(this.mapGenerator.getSeed()),
+        currentChunkX: this.state.world.currentChunkX,
+        currentChunkZ: this.state.world.currentChunkZ
+      }
+    })
   }
 
   private handleResize(): void {
@@ -743,31 +773,34 @@ export class Game {
     for (const item of collected) {
       switch (item.type) {
         case ItemType.Gold:
-          this.gold += item.value
+          this.state.resources.gold += item.value
           this.inventory.addItem(ItemType.Gold, item.value)
           break
         case ItemType.Ammo:
-          this.ammo = Math.min(this.ammo + item.value, this.maxAmmo)
+          this.state.combat.ammo = Math.min(
+            this.state.combat.ammo + item.value,
+            this.state.combat.maxAmmo
+          )
           this.inventory.addItem(ItemType.Ammo, item.value)
           break
         case ItemType.Herb:
-          this.herbs += item.value
+          this.state.resources.herbs += item.value
           this.inventory.addItem(ItemType.Herb, item.value)
           break
         case ItemType.Ore:
-          this.ores += item.value
+          this.state.resources.ores += item.value
           this.inventory.addItem(ItemType.Ore, item.value)
           break
         case ItemType.Gunpowder:
-          this.gunpowder += item.value
+          this.state.resources.gunpowder += item.value
           this.inventory.addItem(ItemType.Gunpowder, item.value)
           break
         case ItemType.LightAmmo:
-          this.lightAmmo += item.value
+          this.state.resources.lightAmmo += item.value
           this.inventory.addItem(ItemType.LightAmmo, item.value)
           break
         case ItemType.HeavyAmmo:
-          this.heavyAmmo += item.value
+          this.state.resources.heavyAmmo += item.value
           this.inventory.addItem(ItemType.HeavyAmmo, item.value)
           break
         case ItemType.HealthPotion:
@@ -777,7 +810,6 @@ export class Game {
           this.player.applySpeedBoost(item.value, 5)
           break
       }
-      this.craftingSystem.addItem(item.type, item.value)
     }
   }
 
@@ -795,8 +827,11 @@ export class Game {
           this.bulletManager.remove(bullet)
 
           if (dead) {
-            this.weaponProficiency.addKill(this.currentWeaponType)
-            this.weaponProficiency.addDamage(this.currentWeaponType, bullet.state.damage)
+            this.weaponProficiency.addKill(this.state.combat.currentWeaponType)
+            this.weaponProficiency.addDamage(
+              this.state.combat.currentWeaponType,
+              bullet.state.damage
+            )
             this.itemManager.spawnAtEnemyDeath(enemy.getPosition(), enemy.type)
             this.enemyManager.remove(enemy)
             if (this.isDefenseMode) {
@@ -956,9 +991,9 @@ export class Game {
     const px = Math.floor(this.player.mesh.position.x / this.chunkSize)
     const pz = Math.floor(this.player.mesh.position.z / this.chunkSize)
 
-    if (px !== this.currentChunkX || pz !== this.currentChunkZ) {
-      this.currentChunkX = px
-      this.currentChunkZ = pz
+    if (px !== this.state.world.currentChunkX || pz !== this.state.world.currentChunkZ) {
+      this.state.world.currentChunkX = px
+      this.state.world.currentChunkZ = pz
       this.updateTerrainChunks()
     }
 
@@ -987,11 +1022,11 @@ export class Game {
     this.uiManager.updateStats(
       this.player.state.hp,
       this.player.state.maxHp,
-      this.ammo,
-      this.maxAmmo,
-      this.gold,
-      this.herbs,
-      this.ores
+      this.state.combat.ammo,
+      this.state.combat.maxAmmo,
+      this.state.resources.gold,
+      this.state.resources.herbs,
+      this.state.resources.ores
     )
 
     if (this.isDefenseMode) {

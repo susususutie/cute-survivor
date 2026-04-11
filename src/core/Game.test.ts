@@ -6,9 +6,24 @@ Object.defineProperty(global, 'document', {
     getElementById: vi.fn(() => ({ appendChild: vi.fn() })),
     createElement: vi.fn((tag: string) => {
       if (tag === 'canvas') {
-        return { width: 150, height: 150, getContext: vi.fn(() => ({ fillRect: vi.fn() })), appendChild: vi.fn(), remove: vi.fn() }
+        return {
+          width: 150,
+          height: 150,
+          getContext: vi.fn(() => ({ fillRect: vi.fn() })),
+          appendChild: vi.fn(),
+          remove: vi.fn()
+        }
       }
-      if (tag === 'div') return { id: '', innerHTML: '', style: {}, appendChild: vi.fn(), remove: vi.fn(), querySelector: vi.fn(), querySelectorAll: vi.fn(() => []) }
+      if (tag === 'div')
+        return {
+          id: '',
+          innerHTML: '',
+          style: {},
+          appendChild: vi.fn(),
+          remove: vi.fn(),
+          querySelector: vi.fn(),
+          querySelectorAll: vi.fn(() => [])
+        }
       if (tag === 'style') return { textContent: '', appendChild: vi.fn() }
       return {}
     }),
@@ -58,7 +73,9 @@ const mockThree = {
     getElapsedTime: vi.fn(() => 0)
   })),
   Vector3: vi.fn().mockImplementation((x = 0, y = 0, z = 0) => ({
-    x, y, z,
+    x,
+    y,
+    z,
     clone: vi.fn(() => mockThree.Vector3(x, y, z)),
     distanceTo: vi.fn(() => 10),
     normalize: vi.fn(),
