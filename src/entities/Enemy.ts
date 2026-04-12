@@ -1,10 +1,20 @@
 import * as THREE from 'three'
 
-export enum EnemyState {
+export enum EnemyAIState {
   Patrol = 'patrol',
   Alert = 'alert',
   Chase = 'chase',
   Attack = 'attack'
+}
+
+export interface EnemyState {
+  id: string
+  hp: number
+  maxHp: number
+  type: EnemyType
+  position: { x: number; y: number; z: number }
+  rotation: number
+  animPhase: number
 }
 
 export enum EnemyType {
@@ -43,7 +53,7 @@ export class Enemy {
   public speed: number
   public damage: number
   public type: EnemyType
-  public state = EnemyState.Patrol
+  public state = EnemyAIState.Patrol
   private detectRange: number
   private attackRange: number
   private aggroRange: number
@@ -430,7 +440,7 @@ export class Enemy {
     const distToPlayer = this.mesh.position.distanceTo(playerPos)
 
     if (distToPlayer <= this.attackRange) {
-      this.state = EnemyState.Attack
+      this.state = EnemyAIState.Attack
       this.isAggro = true
       this.deaggroTimer = 0
       if (this.hasRangedAttack && distToPlayer <= this.rangedAttackRange) {
@@ -439,29 +449,29 @@ export class Enemy {
         this.handleAttack(delta)
       }
     } else if (this.hasRangedAttack && distToPlayer <= this.rangedAttackRange && this.isAggro) {
-      this.state = EnemyState.Chase
+      this.state = EnemyAIState.Chase
       this.handleRangedAttack(delta, playerPos)
     } else if (distToPlayer <= this.detectRange) {
-      this.state = EnemyState.Chase
+      this.state = EnemyAIState.Chase
       this.isAggro = true
       this.deaggroTimer = 0
       this.chase(playerPos, delta)
     } else if (this.isAggro && distToPlayer <= this.aggroRange) {
-      this.state = EnemyState.Chase
+      this.state = EnemyAIState.Chase
       this.deaggroTimer += delta
       if (this.deaggroTimer >= 3) {
         this.isAggro = false
-        this.state = EnemyState.Patrol
+        this.state = EnemyAIState.Patrol
         this.patrol(delta)
       } else {
         this.chase(playerPos, delta)
       }
     } else if (distToPlayer > this.leashRange) {
       this.isAggro = false
-      this.state = EnemyState.Patrol
+      this.state = EnemyAIState.Patrol
       this.patrol(delta)
     } else {
-      this.state = EnemyState.Patrol
+      this.state = EnemyAIState.Patrol
       this.patrol(delta)
     }
   }

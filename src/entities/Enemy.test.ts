@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import * as THREE from 'three'
-import { Enemy, EnemyManager, EnemyState, EnemyType } from './Enemy'
+import { Enemy, EnemyManager, EnemyAIState, EnemyType } from './Enemy'
 
 vi.mock('three', async () => {
   const actual = await vi.importActual<typeof import('three')>('three')
@@ -103,7 +103,7 @@ describe('Enemy', () => {
 
   it('starts in patrol state', () => {
     const enemy = new Enemy(goblinConfig, new THREE.Vector3(0, 0, 0))
-    expect(enemy.state).toBe(EnemyState.Patrol)
+    expect(enemy.state).toBe(EnemyAIState.Patrol)
   })
 
   it('spawns at given position', () => {
@@ -172,7 +172,7 @@ describe('Enemy update behavior', () => {
 
     enemy.update(0.1, playerPos)
 
-    expect(enemy.state).toBe(EnemyState.Chase)
+    expect(enemy.state).toBe(EnemyAIState.Chase)
   })
 
   it('attacks when within attack range', () => {
@@ -181,7 +181,7 @@ describe('Enemy update behavior', () => {
 
     enemy.update(0.1, playerPos)
 
-    expect(enemy.state).toBe(EnemyState.Attack)
+    expect(enemy.state).toBe(EnemyAIState.Attack)
   })
 
   it('patrols when player is far', () => {
@@ -190,7 +190,7 @@ describe('Enemy update behavior', () => {
 
     enemy.update(0.1, playerPos)
 
-    expect(enemy.state).toBe(EnemyState.Patrol)
+    expect(enemy.state).toBe(EnemyAIState.Patrol)
   })
 
   it('patrol moves enemy', () => {

@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "lib": ["ES2020"],
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "outDir": "./dist-node",
+    "rootDir": "./src",
+    "declaration": false,
+    "sourceMap": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true
+  },
+  "include": [
+    "src/main-node.ts",
+    "src/core/dependencies/*.ts",
+    "src/core/logic/*.ts",
+    "src/core/GameState.ts",
+    "src/core/Weapon.ts",
+    "src/core/WorldConfig.ts",
+    "src/core/Inventory.ts",
+    "src/core/WeaponProficiency.ts"
+  ],
+  "exclude": ["node_modules", "dist", "dist-node", "**/*.test.ts", "src/renderer/**", "src/systems/**", "src/entities/Player.ts", "src/entities/Enemy.ts", "src/entities/Bullet.ts", "src/entities/Item.ts", "src/entities/EntityManager.ts"]
+}

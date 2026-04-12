@@ -18,7 +18,7 @@ import { DefenseMode } from './DefenseMode'
 import { createInitialGameState, type GameState } from './GameState'
 import { StartMenuManager } from '../systems/StartMenuManager'
 import { type WorldConfig } from './WorldConfig'
-import type { SaveData } from '../systems/SaveSystem'
+import type { SaveData, EnemySaveData } from '../systems/SaveSystem'
 
 export class Game {
   private static readonly LEGACY_FIRE_RATE = 0.3
@@ -90,7 +90,7 @@ export class Game {
 
     // Keep a concrete state object from construction time so tests/debugging can
     // read defaults before init() wires up the runtime systems.
-    this.state = createInitialGameState(Date.now(), WeaponType.Pistol)
+    this.state = createInitialGameState(Date.now().toString(), WeaponType.Pistol)
 
     this.boot()
   }
@@ -119,6 +119,9 @@ export class Game {
   }
 
   initGameplay(savedData?: SaveData): void {
+    // Clean up any existing game state before starting fresh
+    this.cleanupGame()
+
     // Hide the start menu first
     this.startMenuManager.hide()
 
@@ -185,7 +188,13 @@ export class Game {
     this.enemyManager = new EnemyManager(this.scene)
     this.itemManager = new ItemManager(this.scene)
     this.createMapObjects()
-    this.spawnInitialEnemies()
+
+    // Only spawn initial enemies if not loading a save
+    // (when loading a save, enemies are dynamically generated as player explores)
+    if (!savedData) {
+      this.spawnInitialEnemies()
+    }
+
     this.handleInput()
     this.handleResize()
 
@@ -330,8 +339,9 @@ export class Game {
   }
 
   private applySaveData(saveData: SaveData): void {
-    // Restore player state
+    // Restore player state - both Player instance state and GameState player state
     this.player.state.hp = saveData.player.hp
+    this.player.state.maxHp = saveData.player.maxHp
     this.player.state.position.x = saveData.player.position.x
     this.player.state.position.y = saveData.player.position.y
     this.player.state.position.z = saveData.player.position.z
@@ -339,6 +349,14 @@ export class Game {
     // Move player mesh to saved position
     this.player.mesh.position.set(saveData.player.position.x, saveData.player.position.y, saveData.player.position.z)
     this.player.mesh.rotation.y = saveData.player.rotation
+
+    // Also update GameState.player to keep them in sync
+    this.state.player.hp = saveData.player.hp
+    this.state.player.maxHp = saveData.player.maxHp
+    this.state.player.position.x = saveData.player.position.x
+    this.state.player.position.y = saveData.player.position.y
+    this.state.player.position.z = saveData.player.position.z
+    this.state.player.rotation = saveData.player.rotation
 
     // Restore resources
     this.state.resources.gold = saveData.player.gold
@@ -362,6 +380,35 @@ export class Game {
     this.state.world.currentChunkX = saveData.world.currentChunkX
     this.state.world.currentChunkZ = saveData.world.currentChunkZ
 
+    // Restore enemies from save data
+    // Remove old enemy meshes from scene and create new manager
+    if (this.enemyManager) {
+      const enemies = this.enemyManager.getEnemies()
+      for (const enemy of enemies) {
+        this.scene.remove(enemy.mesh)
+      }
+    }
+    this.enemyManager = new EnemyManager(this.scene)
+
+    // Restore saved enemies
+    if (saveData.enemies && saveData.enemies.length > 0) {
+      for (const enemyData of saveData.enemies) {
+        this.restoreEnemyFromSave(enemyData)
+      }
+    }
+
+    // Clear items when loading a save - they will be regenerated as player explores
+    this.state.items = []
+
+    // Remove old item meshes from scene and create new manager
+    if (this.itemManager) {
+      const items = this.itemManager.getItems()
+      for (const item of items) {
+        this.scene.remove(item.mesh)
+      }
+    }
+    this.itemManager = new ItemManager(this.scene)
+
     // Restore inventory
     if (saveData.player.inventory) {
       // Reset all items to 0
@@ -376,11 +423,143 @@ export class Game {
           }
         }
       }
+      // Restore equipment
+      if (saveData.player.inventory.equipment) {
+        if (saveData.player.inventory.equipment.weapon) {
+          this.inventory.setEquipment('weapon', saveData.player.inventory.equipment.weapon as ItemType)
+        }
+        if (saveData.player.inventory.equipment.armor) {
+          this.inventory.setEquipment('armor', saveData.player.inventory.equipment.armor as ItemType)
+        }
+      }
+    }
+  }
+
+  private getEnemySaveData(): EnemySaveData[] {
+    const enemies = this.enemyManager.getEnemies()
+    return enemies.map(enemy => {
+      // Access private properties via type assertion for serialization
+      const enemyAny = enemy as unknown as {
+        detectRange: number
+        attackRange: number
+        animPhase: number
+        isAggro: boolean
+        patrolTarget: THREE.Vector3
+        attackCooldown: number
+        hasRangedAttack: boolean
+        rangedAttackRange: number
+        rangedAttackDamage: number
+        rangedAttackCooldown: number
+        rangedAttackTimer: number
+        aggroRange: number
+        leashRange: number
+      }
+
+      return {
+        id: `enemy_${enemy.type}_${enemy.hp}_${enemy.getPosition().x.toFixed(0)}`,
+        type: enemy.type,
+        hp: enemy.hp,
+        maxHp: enemy.maxHp,
+        position: {
+          x: enemy.mesh.position.x,
+          y: enemy.mesh.position.y,
+          z: enemy.mesh.position.z
+        },
+        rotation: enemy.mesh.rotation.y,
+        speed: enemy.speed,
+        damage: enemy.damage,
+        detectRange: enemyAny.detectRange ?? 12,
+        attackRange: enemyAny.attackRange ?? 1.2,
+        state: enemy.state,
+        animPhase: enemyAny.animPhase ?? 0,
+        isAggro: enemyAny.isAggro ?? false,
+        patrolTarget: {
+          x: enemyAny.patrolTarget?.x ?? enemy.mesh.position.x,
+          y: 0,
+          z: enemyAny.patrolTarget?.z ?? enemy.mesh.position.z
+        },
+        attackCooldown: enemyAny.attackCooldown ?? 1,
+        hasRangedAttack: enemyAny.hasRangedAttack ?? false,
+        rangedAttackRange: enemyAny.rangedAttackRange ?? 10,
+        rangedAttackDamage: enemyAny.rangedAttackDamage ?? 10,
+        rangedAttackCooldown: enemyAny.rangedAttackCooldown ?? 2,
+        rangedAttackTimer: enemyAny.rangedAttackTimer ?? 0,
+        aggroRange: enemyAny.aggroRange ?? 15,
+        leashRange: enemyAny.leashRange ?? 25
+      }
+    })
+  }
+
+  private restoreEnemyFromSave(enemyData: EnemySaveData): void {
+    const colors: Record<EnemyType, number> = {
+      [EnemyType.Goblin]: 0x44aa44,
+      [EnemyType.Orc]: 0x665533,
+      [EnemyType.Slime]: 0x44ff88,
+      [EnemyType.Bat]: 0x443366,
+      [EnemyType.Skeleton]: 0xddddcc,
+      [EnemyType.Mushroom]: 0xff6644
+    }
+
+    const type = enemyData.type as EnemyType
+    const config: EnemyConfig = {
+      type,
+      hp: enemyData.maxHp,
+      speed: enemyData.speed,
+      damage: enemyData.damage,
+      detectRange: enemyData.detectRange,
+      attackRange: enemyData.attackRange,
+      color: colors[type] ?? 0x888888,
+      hasRangedAttack: enemyData.hasRangedAttack,
+      rangedAttackRange: enemyData.rangedAttackRange,
+      rangedAttackDamage: enemyData.rangedAttackDamage,
+      rangedAttackCooldown: enemyData.rangedAttackCooldown
+    }
+
+    const position = new THREE.Vector3(
+      enemyData.position.x,
+      enemyData.position.y,
+      enemyData.position.z
+    )
+
+    this.enemyManager.spawnAt(config, position, this.getAllRocks())
+
+    const enemies = this.enemyManager.getEnemies()
+    const restoredEnemy = enemies[enemies.length - 1]
+    if (restoredEnemy) {
+      // Use type assertion to access private properties for restoration
+      const enemyPrivate = restoredEnemy as unknown as {
+        animPhase: number
+        isAggro: boolean
+        attackCooldown: number
+        rangedAttackTimer: number
+        patrolTarget: THREE.Vector3
+        state: string
+      }
+
+      restoredEnemy.hp = enemyData.hp
+      enemyPrivate.state = enemyData.state
+      restoredEnemy.mesh.position.set(
+        enemyData.position.x,
+        enemyData.position.y,
+        enemyData.position.z
+      )
+      restoredEnemy.mesh.rotation.y = enemyData.rotation
+      enemyPrivate.animPhase = enemyData.animPhase ?? 0
+      enemyPrivate.isAggro = enemyData.isAggro
+      enemyPrivate.attackCooldown = enemyData.attackCooldown ?? 1
+      enemyPrivate.rangedAttackTimer = enemyData.rangedAttackTimer ?? 0
+      enemyPrivate.patrolTarget = new THREE.Vector3(
+        enemyData.patrolTarget.x,
+        enemyData.patrolTarget.y,
+        enemyData.patrolTarget.z
+      )
     }
   }
 
   private saveGame(): void {
     if (this.currentSlotIndex < 0) return
+
+    const enemySaveData = this.getEnemySaveData()
 
     this.saveSystem.saveGame({
       player: {
@@ -403,7 +582,8 @@ export class Game {
         currentChunkZ: this.state.world.currentChunkZ,
         worldConfig: this.worldConfig
       },
-      slotIndex: this.currentSlotIndex
+      slotIndex: this.currentSlotIndex,
+      enemies: enemySaveData
     })
 
     // Show save notification
@@ -768,21 +948,6 @@ export class Game {
     this.scene.add(ground)
   }
 
-  private updateGround(): void {
-    const playerPos = this.player.mesh.position
-    const gridHelper = this.scene.getObjectByName('groundGrid') as THREE.GridHelper
-    const groundPlane = this.scene.getObjectByName('groundPlane') as THREE.Mesh
-
-    if (gridHelper) {
-      gridHelper.position.x = playerPos.x
-      gridHelper.position.z = playerPos.z
-    }
-    if (groundPlane) {
-      groundPlane.position.x = playerPos.x
-      groundPlane.position.z = playerPos.z
-    }
-  }
-
   private createPlayer(): void {
     this.player = new Player()
     this.scene.add(this.player.mesh)
@@ -955,6 +1120,8 @@ export class Game {
   private autoSave(): void {
     if (this.currentSlotIndex < 0) return
 
+    const enemySaveData = this.getEnemySaveData()
+
     this.saveSystem.saveGame({
       player: {
         hp: this.player.state.hp,
@@ -976,7 +1143,8 @@ export class Game {
         currentChunkZ: this.state.world.currentChunkZ,
         worldConfig: this.worldConfig
       },
-      slotIndex: this.currentSlotIndex
+      slotIndex: this.currentSlotIndex,
+      enemies: enemySaveData
     })
   }
 
@@ -1252,7 +1420,6 @@ export class Game {
     }
 
     this.updateCamera()
-    this.updateGround()
 
     this.player.update(delta, this.camera, this.bounds)
     this.bulletManager.update(delta)

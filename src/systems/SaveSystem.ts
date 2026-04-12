@@ -2,6 +2,8 @@ import { Inventory } from '../core/Inventory'
 import type { ItemType } from './ItemSystem'
 import type { WeaponType } from '../core/Weapon'
 import type { WorldConfig } from '../core/WorldConfig'
+import type { IStorage } from '../core/dependencies/Storage'
+import { MemoryStorage } from '../core/dependencies/Storage'
 
 export interface PlayerSaveData {
   hp: number
@@ -31,12 +33,38 @@ export interface WorldSaveData {
   worldConfig: WorldConfig
 }
 
+export interface EnemySaveData {
+  id: string
+  type: string
+  hp: number
+  maxHp: number
+  position: { x: number; y: number; z: number }
+  rotation: number
+  speed: number
+  damage: number
+  detectRange: number
+  attackRange: number
+  state: string
+  animPhase: number
+  isAggro: boolean
+  patrolTarget: { x: number; y: number; z: number }
+  attackCooldown: number
+  hasRangedAttack: boolean
+  rangedAttackRange: number
+  rangedAttackDamage: number
+  rangedAttackCooldown: number
+  rangedAttackTimer: number
+  aggroRange: number
+  leashRange: number
+}
+
 export interface SaveData {
   version: string
   timestamp: number
   slotIndex: number
   player: PlayerSaveData
   world: WorldSaveData
+  enemies: EnemySaveData[]
 }
 
 export interface SaveInfo {
@@ -76,6 +104,7 @@ export interface SaveInput {
     currentChunkZ: number
     worldConfig: WorldConfig
   }
+  enemies: EnemySaveData[]
 }
 
 const MAX_SAVE_SLOTS = 6
@@ -83,10 +112,18 @@ const SAVE_KEY_PREFIX = 'cute_survivor_save_'
 const SAVE_VERSION = '1.1.0'
 
 export class SaveSystem {
-  private localStorage: Storage
+  private storage: IStorage
 
-  constructor(localStorage: Storage = window.localStorage) {
-    this.localStorage = localStorage
+  constructor(storage?: IStorage) {
+    // Default to MemoryStorage for Node.js, but allow injection for browser
+    this.storage = storage ?? new MemoryStorage()
+  }
+
+  /**
+   * Set the storage backend (useful for switching from memory to localStorage in browser)
+   */
+  setStorage(storage: IStorage): void {
+    this.storage = storage
   }
 
   private getSaveKey(slotIndex: number): string {
@@ -128,10 +165,11 @@ export class SaveSystem {
           currentChunkX: input.world.currentChunkX,
           currentChunkZ: input.world.currentChunkZ,
           worldConfig: input.world.worldConfig
-        }
+        },
+        enemies: input.enemies
       }
 
-      this.localStorage.setItem(this.getSaveKey(input.slotIndex), JSON.stringify(saveData))
+      this.storage.setItem(this.getSaveKey(input.slotIndex), JSON.stringify(saveData))
       return true
     } catch {
       console.error('Failed to save game')
@@ -141,7 +179,7 @@ export class SaveSystem {
 
   getSave(slotIndex: number): SaveData | null {
     try {
-      const data = this.localStorage.getItem(this.getSaveKey(slotIndex))
+      const data = this.storage.getItem(this.getSaveKey(slotIndex))
       if (!data) {
         return null
       }
@@ -167,7 +205,7 @@ export class SaveSystem {
 
   deleteSave(slotIndex: number): boolean {
     try {
-      this.localStorage.removeItem(this.getSaveKey(slotIndex))
+      this.storage.removeItem(this.getSaveKey(slotIndex))
       return true
     } catch (e) {
       console.error('Failed to delete save:', e)
@@ -177,7 +215,7 @@ export class SaveSystem {
 
   getSaveInfo(slotIndex: number): SaveInfo {
     try {
-      const data = this.localStorage.getItem(this.getSaveKey(slotIndex))
+      const data = this.storage.getItem(this.getSaveKey(slotIndex))
       if (!data) {
         return { slotIndex, timestamp: 0, version: '', hasData: false, seedPreview: '' }
       }

@@ -17,7 +17,6 @@ export class StartMenuManager {
   private container: HTMLElement
   private saveSystem: SaveSystem
   private currentSeed = ''
-  private currentConfig: WorldConfig | null = null
   private selectedSlot = -1
 
   onContinue: ((saveData: SaveData) => void) | null = null
@@ -332,7 +331,7 @@ export class StartMenuManager {
 
   showWorldConfig(editSeed?: string): void {
     this.currentSeed = editSeed ?? generateRandomSeed()
-    this.currentConfig = createDefaultWorldConfig(this.currentSeed)
+    createDefaultWorldConfig(this.currentSeed)
     this.container.innerHTML = ''
 
     // Back button

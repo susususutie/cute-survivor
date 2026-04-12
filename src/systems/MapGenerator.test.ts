@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { SeededRandom, MapGenerator } from './MapGenerator'
+import { createDefaultWorldConfig } from '../core/WorldConfig'
 
 describe('SeededRandom', () => {
   it('produces deterministic sequence with same seed', () => {
@@ -97,7 +98,7 @@ describe('MapGenerator', () => {
   const bounds = 50
 
   it('generates map data with all required fields', () => {
-    const gen = new MapGenerator(seed, bounds)
+    const gen = new MapGenerator(createDefaultWorldConfig(String(seed)), bounds)
     const map = gen.generate()
 
     expect(map).toHaveProperty('rocks')
@@ -108,7 +109,7 @@ describe('MapGenerator', () => {
   })
 
   it('generates rocks within bounds', () => {
-    const gen = new MapGenerator(seed, bounds)
+    const gen = new MapGenerator(createDefaultWorldConfig(String(seed)), bounds)
     const map = gen.generate()
 
     for (const rock of map.rocks) {
@@ -124,7 +125,7 @@ describe('MapGenerator', () => {
   })
 
   it('rocks are not too close to spawn', () => {
-    const gen = new MapGenerator(seed, bounds)
+    const gen = new MapGenerator(createDefaultWorldConfig(String(seed)), bounds)
     const map = gen.generate()
 
     for (const rock of map.rocks) {
@@ -134,7 +135,7 @@ describe('MapGenerator', () => {
   })
 
   it('rocks are not overlapping', () => {
-    const gen = new MapGenerator(seed, bounds)
+    const gen = new MapGenerator(createDefaultWorldConfig(String(seed)), bounds)
     const map = gen.generate()
 
     for (let i = 0; i < map.rocks.length; i++) {
@@ -148,7 +149,7 @@ describe('MapGenerator', () => {
   })
 
   it('generates terrain within bounds', () => {
-    const gen = new MapGenerator(seed, bounds)
+    const gen = new MapGenerator(createDefaultWorldConfig(String(seed)), bounds)
     const map = gen.generate()
 
     for (const t of map.terrain) {
@@ -160,7 +161,7 @@ describe('MapGenerator', () => {
   })
 
   it('generates vegetation with valid types', () => {
-    const gen = new MapGenerator(seed, bounds)
+    const gen = new MapGenerator(createDefaultWorldConfig(String(seed)), bounds)
     const map = gen.generate()
     const validTypes = ['tree', 'grass', 'flower', 'bush']
 
@@ -172,7 +173,7 @@ describe('MapGenerator', () => {
   })
 
   it('generates resources with valid types', () => {
-    const gen = new MapGenerator(seed, bounds)
+    const gen = new MapGenerator(createDefaultWorldConfig(String(seed)), bounds)
     const map = gen.generate()
 
     for (const res of map.resources) {
@@ -183,15 +184,15 @@ describe('MapGenerator', () => {
   })
 
   it('player spawn is at origin', () => {
-    const gen = new MapGenerator(seed, bounds)
+    const gen = new MapGenerator(createDefaultWorldConfig(String(seed)), bounds)
     const map = gen.generate()
 
     expect(map.playerSpawn).toEqual({ x: 0, z: 0 })
   })
 
   it('generates deterministic map with same seed', () => {
-    const gen1 = new MapGenerator(seed, bounds)
-    const gen2 = new MapGenerator(seed, bounds)
+    const gen1 = new MapGenerator(createDefaultWorldConfig(String(seed)), bounds)
+    const gen2 = new MapGenerator(createDefaultWorldConfig(String(seed)), bounds)
     const map1 = gen1.generate()
     const map2 = gen2.generate()
 
@@ -199,8 +200,8 @@ describe('MapGenerator', () => {
   })
 
   it('generates different maps with different seeds', () => {
-    const gen1 = new MapGenerator(1, bounds)
-    const gen2 = new MapGenerator(2, bounds)
+    const gen1 = new MapGenerator(createDefaultWorldConfig('1'), bounds)
+    const gen2 = new MapGenerator(createDefaultWorldConfig('2'), bounds)
     const map1 = gen1.generate()
     const map2 = gen2.generate()
 
@@ -212,7 +213,7 @@ describe('MapGenerator chunk generation', () => {
   const seed = 54321
 
   it('generates chunk data with all required fields', () => {
-    const gen = new MapGenerator(seed, 50)
+    const gen = new MapGenerator(createDefaultWorldConfig(String(seed)), 50)
     const chunk = gen.generateChunk(0, 0)
 
     expect(chunk).toHaveProperty('rocks')
@@ -223,7 +224,7 @@ describe('MapGenerator chunk generation', () => {
   })
 
   it('generates different chunks for different coordinates', () => {
-    const gen = new MapGenerator(seed, 50)
+    const gen = new MapGenerator(createDefaultWorldConfig(String(seed)), 50)
     const chunk1 = gen.generateChunk(0, 0)
     const chunk2 = gen.generateChunk(1, 0)
 
@@ -231,7 +232,7 @@ describe('MapGenerator chunk generation', () => {
   })
 
   it('generates same chunk for same coordinates', () => {
-    const gen = new MapGenerator(seed, 50)
+    const gen = new MapGenerator(createDefaultWorldConfig(String(seed)), 50)
     const chunk1 = gen.generateChunk(2, 3)
     const chunk2 = gen.generateChunk(2, 3)
 
@@ -239,7 +240,7 @@ describe('MapGenerator chunk generation', () => {
   })
 
   it('chunk rocks are positioned relative to chunk offset', () => {
-    const gen = new MapGenerator(seed, 50)
+    const gen = new MapGenerator(createDefaultWorldConfig(String(seed)), 50)
     const chunk = gen.generateChunk(1, 1)
     const chunkSize = 48
 
@@ -256,30 +257,30 @@ describe('MapGenerator chunk generation', () => {
 
 describe('MapGenerator.isWalkable', () => {
   it('returns true when no rocks', () => {
-    const gen = new MapGenerator(1, 50)
+    const gen = new MapGenerator(createDefaultWorldConfig('1'), 50)
     expect(gen.isWalkable(0, 0, [])).toBe(true)
   })
 
   it('returns true when far from rocks', () => {
-    const gen = new MapGenerator(1, 50)
+    const gen = new MapGenerator(createDefaultWorldConfig('1'), 50)
     const rocks = [{ x: 10, z: 10, radius: 1, height: 1 }]
     expect(gen.isWalkable(0, 0, rocks)).toBe(true)
   })
 
   it('returns false when inside rock radius', () => {
-    const gen = new MapGenerator(1, 50)
+    const gen = new MapGenerator(createDefaultWorldConfig('1'), 50)
     const rocks = [{ x: 0, z: 0, radius: 2, height: 1 }]
     expect(gen.isWalkable(0, 0, rocks)).toBe(false)
   })
 
   it('returns false when near rock edge', () => {
-    const gen = new MapGenerator(1, 50)
+    const gen = new MapGenerator(createDefaultWorldConfig('1'), 50)
     const rocks = [{ x: 0, z: 0, radius: 1, height: 1 }]
     expect(gen.isWalkable(1.2, 0, rocks)).toBe(false)
   })
 
   it('returns true when just outside rock radius plus margin', () => {
-    const gen = new MapGenerator(1, 50)
+    const gen = new MapGenerator(createDefaultWorldConfig('1'), 50)
     const rocks = [{ x: 0, z: 0, radius: 1, height: 1 }]
     expect(gen.isWalkable(2, 0, rocks)).toBe(true)
   })

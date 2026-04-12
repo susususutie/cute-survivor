@@ -1,6 +1,6 @@
 import * as THREE from 'three'
-import { EnemyType } from '../entities/Enemy'
-import type { EnemyConfig } from '../entities/Enemy'
+import { EnemyType } from '../entities/EnemyConfig'
+import type { EnemyConfig } from '../entities/EnemyConfig'
 
 export interface WaveConfig {
   enemyCount: number
@@ -40,7 +40,9 @@ export class DefenseMode {
     this.waveConfigs = []
     for (let i = 1; i <= this.totalWaves; i++) {
       const baseCount = 3 + i * 2
-      const enemyTypes: EnemyType[] = [EnemyType.Goblin, EnemyType.Slime]
+      const enemyTypes: EnemyType[] = []
+      enemyTypes.push(EnemyType.Goblin)
+      enemyTypes.push(EnemyType.Slime)
       if (i >= 3) enemyTypes.push(EnemyType.Orc)
       if (i >= 5) enemyTypes.push(EnemyType.Bat)
       if (i >= 7) enemyTypes.push(EnemyType.Skeleton)
@@ -103,7 +105,7 @@ export class DefenseMode {
     const x = this.defenseCenter.x + Math.cos(angle) * distance
     const z = this.defenseCenter.z + Math.sin(angle) * distance
 
-    const enemyTypes = config.enemyTypes.length > 0 ? config.enemyTypes : [EnemyType.Goblin]
+    const enemyTypes: EnemyType[] = config.enemyTypes.length > 0 ? config.enemyTypes : [EnemyType.Goblin]
     const type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)]
     const stats = this.getEnemyStats(type)
 

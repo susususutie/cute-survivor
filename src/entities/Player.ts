@@ -1,6 +1,14 @@
 import * as THREE from 'three'
 
+// Plain object Vector3 for use in pure logic (no THREE dependency)
+export interface Vector3 {
+  x: number
+  y: number
+  z: number
+}
+
 export interface PlayerState {
+  id: string
   hp: number
   maxHp: number
   speed: number
@@ -232,6 +240,7 @@ export class Player {
     this.mesh.position.set(0, 0, 0)
 
     this.state = {
+      id: `player_${Date.now()}`,
       hp: 100,
       maxHp: 100,
       speed: 8,

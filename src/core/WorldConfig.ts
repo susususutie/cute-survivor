@@ -1,4 +1,4 @@
-import { EnemyType } from '../entities/Enemy'
+import type { EnemyType } from '../entities/EnemyConfig'
 
 export interface VegetationConfig {
   trees: number
@@ -77,7 +77,7 @@ export const DEFAULT_TERRAIN_CONFIG: TerrainConfig = {
 }
 
 export const DEFAULT_MONSTER_TYPES: Record<EnemyType, MonsterTypeConfig> = {
-  [EnemyType.Goblin]: {
+  'goblin': {
     spawnWeight: 20,
     hp: 40,
     speed: 3.5,
@@ -89,7 +89,7 @@ export const DEFAULT_MONSTER_TYPES: Record<EnemyType, MonsterTypeConfig> = {
     rangedAttackDamage: 8,
     rangedAttackCooldown: 2
   },
-  [EnemyType.Orc]: {
+  'orc': {
     spawnWeight: 15,
     hp: 80,
     speed: 2,
@@ -97,7 +97,7 @@ export const DEFAULT_MONSTER_TYPES: Record<EnemyType, MonsterTypeConfig> = {
     detectRange: 10,
     attackRange: 1.5
   },
-  [EnemyType.Slime]: {
+  'slime': {
     spawnWeight: 20,
     hp: 30,
     speed: 2.5,
@@ -105,7 +105,7 @@ export const DEFAULT_MONSTER_TYPES: Record<EnemyType, MonsterTypeConfig> = {
     detectRange: 8,
     attackRange: 1
   },
-  [EnemyType.Bat]: {
+  'bat': {
     spawnWeight: 15,
     hp: 20,
     speed: 5,
@@ -113,7 +113,7 @@ export const DEFAULT_MONSTER_TYPES: Record<EnemyType, MonsterTypeConfig> = {
     detectRange: 15,
     attackRange: 0.8
   },
-  [EnemyType.Skeleton]: {
+  'skeleton': {
     spawnWeight: 15,
     hp: 35,
     speed: 2.8,
@@ -125,7 +125,7 @@ export const DEFAULT_MONSTER_TYPES: Record<EnemyType, MonsterTypeConfig> = {
     rangedAttackDamage: 12,
     rangedAttackCooldown: 2.5
   },
-  [EnemyType.Mushroom]: {
+  'mushroom': {
     spawnWeight: 15,
     hp: 50,
     speed: 1.5,
@@ -141,25 +141,25 @@ export const DEFAULT_MONSTER_CONFIG: MonsterConfig = {
 }
 
 export const DEFAULT_DROP_CONFIG: DropConfig = {
-  [EnemyType.Goblin]: [
+  'goblin': [
     { itemType: 'gold', chance: 0.3 },
     { itemType: 'herb', chance: 0.15 }
   ],
-  [EnemyType.Orc]: [
+  'orc': [
     { itemType: 'gold', chance: 0.5 },
     { itemType: 'ore', chance: 0.2 }
   ],
-  [EnemyType.Slime]: [
+  'slime': [
     { itemType: 'herb', chance: 0.25 }
   ],
-  [EnemyType.Bat]: [
+  'bat': [
     { itemType: 'light_ammo', chance: 0.2 }
   ],
-  [EnemyType.Skeleton]: [
+  'skeleton': [
     { itemType: 'gold', chance: 0.35 },
     { itemType: 'heavy_ammo', chance: 0.15 }
   ],
-  [EnemyType.Mushroom]: [
+  'mushroom': [
     { itemType: 'herb', chance: 0.3 },
     { itemType: 'health_potion', chance: 0.1 }
   ]

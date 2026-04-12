@@ -19,7 +19,7 @@ describe('SaveSystem', () => {
         delete mockStorage[key]
       })
     }
-    saveSystem = new SaveSystem(mockLocalStorage as unknown as Storage)
+    saveSystem = new SaveSystem(mockLocalStorage as unknown as import('../core/dependencies/Storage').IStorage)
   })
 
   describe('saveGame', () => {
