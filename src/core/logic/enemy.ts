@@ -5,7 +5,7 @@
  * No THREE.js, no DOM, no global state.
  */
 
-import type { Vector3, EnemyLogicState, EnemyAIState } from './types'
+import type { Vector3, EnemyLogicState, EnemyAIState, EnemyType } from './types'
 import type { IRandomSource } from './dependencies'
 import {
   calculateDistance,

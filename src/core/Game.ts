@@ -20,6 +20,13 @@ import { StartMenuManager } from '../systems/StartMenuManager'
 import { type WorldConfig } from './WorldConfig'
 import type { SaveData, EnemySaveData } from '../systems/SaveSystem'
 
+export interface GameOptions {
+  autoBoot?: boolean
+  nowMs?: () => number
+  random?: () => number
+  requestFrame?: (cb: FrameRequestCallback) => number
+}
+
 export class Game {
   private static readonly LEGACY_FIRE_RATE = 0.3
 
@@ -59,6 +66,9 @@ export class Game {
   private startMenuManager!: StartMenuManager
   private currentSlotIndex = -1
   private monsterRNG!: SeededRandom
+  private readonly nowMs: () => number
+  private readonly randomFn: () => number
+  private readonly requestFrame: (cb: FrameRequestCallback) => number
   private effectParticles: THREE.Points[] = []
   private eventHandlers: {
     mouseDown: ((e: MouseEvent) => void) | null
@@ -66,7 +76,11 @@ export class Game {
     resize: (() => void) | null
   } = { mouseDown: null, keyDown: null, resize: null }
 
-  constructor() {
+  constructor(options: GameOptions = {}) {
+    this.nowMs = options.nowMs ?? (() => performance.now())
+    this.randomFn = options.random ?? (() => Math.random())
+    this.requestFrame = options.requestFrame ?? ((cb) => requestAnimationFrame(cb))
+
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color(0x1a1a2e)
 
@@ -90,9 +104,11 @@ export class Game {
 
     // Keep a concrete state object from construction time so tests/debugging can
     // read defaults before init() wires up the runtime systems.
-    this.state = createInitialGameState(Date.now().toString(), WeaponType.Pistol)
+    this.state = createInitialGameState('initial_seed', WeaponType.Pistol)
 
-    this.boot()
+    if (options.autoBoot ?? false) {
+      this.boot()
+    }
   }
 
   boot(): void {
@@ -134,7 +150,7 @@ export class Game {
     this.lastShotTime = 0
 
     // Initialize monster RNG for spawning (separate from terrain)
-    this.monsterRNG = new SeededRandom(Date.now())
+    this.monsterRNG = new SeededRandom(this.nowMs())
 
     // Initialize state if not continuing
     if (!savedData) {
@@ -339,20 +355,14 @@ export class Game {
   }
 
   private applySaveData(saveData: SaveData): void {
-    // Restore player state - both Player instance state and GameState player state
-    this.player.state.hp = saveData.player.hp
-    this.player.state.maxHp = saveData.player.maxHp
-    this.player.state.position.x = saveData.player.position.x
-    this.player.state.position.y = saveData.player.position.y
-    this.player.state.position.z = saveData.player.position.z
-    this.player.state.rotation = saveData.player.rotation
-    // Move player mesh to saved position
-    this.player.mesh.position.set(saveData.player.position.x, saveData.player.position.y, saveData.player.position.z)
-    this.player.mesh.rotation.y = saveData.player.rotation
+    // Restore player runtime from DTO snapshot.
+    this.player.applySnapshot(saveData.player)
 
     // Also update GameState.player to keep them in sync
+    this.state.player.id = saveData.player.id
     this.state.player.hp = saveData.player.hp
     this.state.player.maxHp = saveData.player.maxHp
+    this.state.player.speed = saveData.player.speed
     this.state.player.position.x = saveData.player.position.x
     this.state.player.position.y = saveData.player.position.y
     this.state.player.position.z = saveData.player.position.z
@@ -437,57 +447,7 @@ export class Game {
 
   private getEnemySaveData(): EnemySaveData[] {
     const enemies = this.enemyManager.getEnemies()
-    return enemies.map(enemy => {
-      // Access private properties via type assertion for serialization
-      const enemyAny = enemy as unknown as {
-        detectRange: number
-        attackRange: number
-        animPhase: number
-        isAggro: boolean
-        patrolTarget: THREE.Vector3
-        attackCooldown: number
-        hasRangedAttack: boolean
-        rangedAttackRange: number
-        rangedAttackDamage: number
-        rangedAttackCooldown: number
-        rangedAttackTimer: number
-        aggroRange: number
-        leashRange: number
-      }
-
-      return {
-        id: `enemy_${enemy.type}_${enemy.hp}_${enemy.getPosition().x.toFixed(0)}`,
-        type: enemy.type,
-        hp: enemy.hp,
-        maxHp: enemy.maxHp,
-        position: {
-          x: enemy.mesh.position.x,
-          y: enemy.mesh.position.y,
-          z: enemy.mesh.position.z
-        },
-        rotation: enemy.mesh.rotation.y,
-        speed: enemy.speed,
-        damage: enemy.damage,
-        detectRange: enemyAny.detectRange ?? 12,
-        attackRange: enemyAny.attackRange ?? 1.2,
-        state: enemy.state,
-        animPhase: enemyAny.animPhase ?? 0,
-        isAggro: enemyAny.isAggro ?? false,
-        patrolTarget: {
-          x: enemyAny.patrolTarget?.x ?? enemy.mesh.position.x,
-          y: 0,
-          z: enemyAny.patrolTarget?.z ?? enemy.mesh.position.z
-        },
-        attackCooldown: enemyAny.attackCooldown ?? 1,
-        hasRangedAttack: enemyAny.hasRangedAttack ?? false,
-        rangedAttackRange: enemyAny.rangedAttackRange ?? 10,
-        rangedAttackDamage: enemyAny.rangedAttackDamage ?? 10,
-        rangedAttackCooldown: enemyAny.rangedAttackCooldown ?? 2,
-        rangedAttackTimer: enemyAny.rangedAttackTimer ?? 0,
-        aggroRange: enemyAny.aggroRange ?? 15,
-        leashRange: enemyAny.leashRange ?? 25
-      }
-    })
+    return enemies.map((enemy) => enemy.toSnapshot())
   }
 
   private restoreEnemyFromSave(enemyData: EnemySaveData): void {
@@ -521,39 +481,14 @@ export class Game {
       enemyData.position.z
     )
 
-    this.enemyManager.spawnAt(config, position, this.getAllRocks())
-
-    const enemies = this.enemyManager.getEnemies()
-    const restoredEnemy = enemies[enemies.length - 1]
-    if (restoredEnemy) {
-      // Use type assertion to access private properties for restoration
-      const enemyPrivate = restoredEnemy as unknown as {
-        animPhase: number
-        isAggro: boolean
-        attackCooldown: number
-        rangedAttackTimer: number
-        patrolTarget: THREE.Vector3
-        state: string
-      }
-
-      restoredEnemy.hp = enemyData.hp
-      enemyPrivate.state = enemyData.state
-      restoredEnemy.mesh.position.set(
-        enemyData.position.x,
-        enemyData.position.y,
-        enemyData.position.z
-      )
-      restoredEnemy.mesh.rotation.y = enemyData.rotation
-      enemyPrivate.animPhase = enemyData.animPhase ?? 0
-      enemyPrivate.isAggro = enemyData.isAggro
-      enemyPrivate.attackCooldown = enemyData.attackCooldown ?? 1
-      enemyPrivate.rangedAttackTimer = enemyData.rangedAttackTimer ?? 0
-      enemyPrivate.patrolTarget = new THREE.Vector3(
-        enemyData.patrolTarget.x,
-        enemyData.patrolTarget.y,
-        enemyData.patrolTarget.z
-      )
-    }
+    const restoredEnemy = this.enemyManager.spawnAtWithCallback(
+      config,
+      position,
+      this.getAllRocks(),
+      (pos, dir, dmg) => (this.enemyBulletManager.fire(pos, dir, 12).state.damage = dmg),
+      enemyData.id
+    )
+    restoredEnemy.applySnapshot(enemyData)
   }
 
   private saveGame(): void {
@@ -562,17 +497,7 @@ export class Game {
     const enemySaveData = this.getEnemySaveData()
 
     this.saveSystem.saveGame({
-      player: {
-        hp: this.player.state.hp,
-        maxHp: this.player.state.maxHp,
-        speed: this.player.state.speed,
-        position: {
-          x: this.player.state.position.x,
-          y: this.player.state.position.y,
-          z: this.player.state.position.z
-        },
-        rotation: this.player.state.rotation
-      },
+      player: this.player.toSnapshot(),
       resources: { ...this.state.resources },
       combat: { ...this.state.combat },
       inventory: this.inventory,
@@ -803,7 +728,7 @@ export class Game {
 
         const petalGeo = new THREE.SphereGeometry(0.1 * veg.scale, 6, 6)
         const petalMat = new THREE.MeshStandardMaterial({
-          color: Math.random() > 0.5 ? 0xff66aa : 0xffaa66,
+          color: this.randomFn() > 0.5 ? 0xff66aa : 0xffaa66,
           emissive: 0xff6688,
           emissiveIntensity: 0.2
         })
@@ -891,7 +816,7 @@ export class Game {
 
         const petalGeo = new THREE.SphereGeometry(0.1 * veg.scale, 6, 6)
         const petalMat = new THREE.MeshStandardMaterial({
-          color: Math.random() > 0.5 ? 0xff66aa : 0xffaa66,
+          color: this.randomFn() > 0.5 ? 0xff66aa : 0xffaa66,
           emissive: 0xff6688,
           emissiveIntensity: 0.2
         })
@@ -1025,7 +950,7 @@ export class Game {
     this.eventHandlers.mouseDown = (_e: MouseEvent) => {
       if (this.isPaused || this.isGameOver) return
 
-      const now = performance.now() / 1000
+      const now = this.nowMs() / 1000
       const weaponDef = WeaponRegistry.get(this.state.combat.currentWeaponType)
       if (!weaponDef) return
 
@@ -1123,17 +1048,7 @@ export class Game {
     const enemySaveData = this.getEnemySaveData()
 
     this.saveSystem.saveGame({
-      player: {
-        hp: this.player.state.hp,
-        maxHp: this.player.state.maxHp,
-        speed: this.player.state.speed,
-        position: {
-          x: this.player.state.position.x,
-          y: this.player.state.position.y,
-          z: this.player.state.position.z
-        },
-        rotation: this.player.state.rotation
-      },
+      player: this.player.toSnapshot(),
       resources: { ...this.state.resources },
       combat: { ...this.state.combat },
       inventory: this.inventory,
@@ -1175,7 +1090,7 @@ export class Game {
   }
 
   private animate = (): void => {
-    requestAnimationFrame(this.animate)
+    this.requestFrame(this.animate)
 
     if (this.isPaused || this.isGameOver || this.isInMenu) {
       this.renderer.render(this.scene, this.camera)
@@ -1280,14 +1195,14 @@ export class Game {
       positions[i * 3 + 1] = position.y + 0.5
       positions[i * 3 + 2] = position.z
 
-      const angle = Math.random() * Math.PI * 2
-      const speed = 4 + Math.random() * 6
+      const angle = this.randomFn() * Math.PI * 2
+      const speed = 4 + this.randomFn() * 6
       velocities.push(
-        new THREE.Vector3(Math.cos(angle) * speed, 3 + Math.random() * 5, Math.sin(angle) * speed)
+        new THREE.Vector3(Math.cos(angle) * speed, 3 + this.randomFn() * 5, Math.sin(angle) * speed)
       )
 
       const color = new THREE.Color()
-      const hue = Math.random() < 0.5 ? 0.05 + Math.random() * 0.1 : 0.5 + Math.random() * 0.2
+      const hue = this.randomFn() < 0.5 ? 0.05 + this.randomFn() * 0.1 : 0.5 + this.randomFn() * 0.2
       color.setHSL(hue, 1, 0.6)
       colors[i * 3] = color.r
       colors[i * 3 + 1] = color.g

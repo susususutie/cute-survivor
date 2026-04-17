@@ -17,18 +17,17 @@ import { ItemType } from '../../systems/ItemSystem'
 // Helpers
 // -----------------------------------------------------------------------------
 
-let _idCounter = 0
-function generateId(): string {
-  return `id_${Date.now()}_${++_idCounter}`
+function generatePlayerId(seed: string): string {
+  return `player_${seed}`
 }
 
 // -----------------------------------------------------------------------------
 // Default sub-states
 // -----------------------------------------------------------------------------
 
-function createDefaultPlayerState(weaponType: WeaponType): PlayerState {
+function createDefaultPlayerState(weaponType: WeaponType, seed: string): PlayerState {
   return {
-    id: generateId(),
+    id: generatePlayerId(seed),
     position: { x: 0, y: 0, z: 0 },
     rotation: 0,
     velocity: { x: 0, y: 0, z: 0 },
@@ -131,7 +130,7 @@ export function createInitialState(
   difficulty: GameDifficulty = 'normal'
 ): GameState {
   return {
-    player: createDefaultPlayerState(weaponType),
+    player: createDefaultPlayerState(weaponType, seed),
     enemies: [],
     bullets: [],
     enemyBullets: [],

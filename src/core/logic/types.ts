@@ -4,8 +4,6 @@
  */
 
 import type { WeaponType } from '../Weapon'
-import type { EnemyType } from '../../entities/Enemy'
-import type { ItemType } from '../../systems/ItemSystem'
 
 /** Lightweight 3-D vector – mirrors THREE.Vector3 but carries no renderer deps. */
 export interface Vector3 {
@@ -13,6 +11,31 @@ export interface Vector3 {
   y: number
   z: number
 }
+
+export const ENEMY_TYPE = {
+  Goblin: 'goblin',
+  Orc: 'orc',
+  Slime: 'slime',
+  Bat: 'bat',
+  Skeleton: 'skeleton',
+  Mushroom: 'mushroom'
+} as const
+
+export type EnemyType = typeof ENEMY_TYPE[keyof typeof ENEMY_TYPE]
+
+export const ITEM_TYPE = {
+  Gold: 'gold',
+  Herb: 'herb',
+  Ore: 'ore',
+  Ammo: 'ammo',
+  Gunpowder: 'gunpowder',
+  LightAmmo: 'light_ammo',
+  HeavyAmmo: 'heavy_ammo',
+  HealthPotion: 'health_potion',
+  SpeedPotion: 'speed_potion'
+} as const
+
+export type ItemType = typeof ITEM_TYPE[keyof typeof ITEM_TYPE]
 
 // ---------------------------------------------------------------------------
 // Bullet

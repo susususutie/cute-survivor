@@ -45,3 +45,26 @@ export class MemoryStorage implements IStorage {
     this.data = new Map(Object.entries(data))
   }
 }
+
+/**
+ * Browser localStorage adapter.
+ */
+export class BrowserStorage implements IStorage {
+  private readonly storage: Storage
+
+  constructor(storage: Storage = globalThis.localStorage) {
+    this.storage = storage
+  }
+
+  getItem(key: string): string | null {
+    return this.storage.getItem(key)
+  }
+
+  setItem(key: string, value: string): void {
+    this.storage.setItem(key, value)
+  }
+
+  removeItem(key: string): void {
+    this.storage.removeItem(key)
+  }
+}

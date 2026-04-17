@@ -163,6 +163,36 @@ describe('Enemy', () => {
 
     expect(enemy).toBeDefined()
   })
+
+  it('toSnapshot exports enemy DTO fields', () => {
+    const enemy = new Enemy(goblinConfig, new THREE.Vector3(3, 0, 4), 'enemy_snapshot_1')
+    enemy.takeDamage(10)
+    enemy.mesh.rotation.y = 0.75
+
+    const snapshot = enemy.toSnapshot()
+
+    expect(snapshot.id).toBe('enemy_snapshot_1')
+    expect(snapshot.type).toBe(EnemyType.Goblin)
+    expect(snapshot.hp).toBe(30)
+    expect(snapshot.maxHp).toBe(40)
+    expect(snapshot.position).toEqual({ x: 3, y: 0, z: 4 })
+    expect(snapshot.rotation).toBe(0.75)
+    expect(snapshot.detectRange).toBe(12)
+    expect(snapshot.attackRange).toBe(1.2)
+    expect(snapshot.state).toBe(EnemyAIState.Patrol)
+  })
+
+  it('applySnapshot restores enemy runtime state from DTO', () => {
+    const source = new Enemy(goblinConfig, new THREE.Vector3(1, 0, 2), 'enemy_restore_1')
+    source.update(0.1, new THREE.Vector3(2, 0, 2))
+    source.takeDamage(5)
+    const snapshot = source.toSnapshot()
+
+    const restored = new Enemy(goblinConfig, new THREE.Vector3(99, 0, 99), 'enemy_restore_1')
+    restored.applySnapshot(snapshot)
+
+    expect(restored.toSnapshot()).toEqual(snapshot)
+  })
 })
 
 describe('Enemy update behavior', () => {
@@ -251,6 +281,19 @@ describe('EnemyManager', () => {
     expect(enemies).toHaveLength(1)
     expect(enemies[0].getPosition().x).toBe(10)
     expect(enemies[0].getPosition().z).toBe(20)
+  })
+
+  it('spawnAtWithCallback keeps provided id for snapshot restoration', () => {
+    const enemy = manager.spawnAtWithCallback(
+      goblinConfig,
+      new THREE.Vector3(7, 0, -3),
+      [],
+      vi.fn(),
+      'enemy_saved_id_01'
+    )
+
+    expect(enemy.id).toBe('enemy_saved_id_01')
+    expect(enemy.toSnapshot().id).toBe('enemy_saved_id_01')
   })
 
   it('setRocks propagates to all enemies', () => {

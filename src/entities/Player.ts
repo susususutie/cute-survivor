@@ -16,6 +16,15 @@ export interface PlayerState {
   rotation: number
 }
 
+export interface PlayerSnapshotDTO {
+  id: string
+  hp: number
+  maxHp: number
+  speed: number
+  position: { x: number; y: number; z: number }
+  rotation: number
+}
+
 export interface Rock {
   x: number
   z: number
@@ -280,6 +289,32 @@ export class Player {
 
   setRockMeshes(_meshes: THREE.Mesh[]): void {
     // Reserved for future rock mesh collision system
+  }
+
+  toSnapshot(): PlayerSnapshotDTO {
+    return {
+      id: this.state.id,
+      hp: this.state.hp,
+      maxHp: this.state.maxHp,
+      speed: this.state.speed,
+      position: {
+        x: this.mesh.position.x,
+        y: this.mesh.position.y,
+        z: this.mesh.position.z
+      },
+      rotation: this.state.rotation
+    }
+  }
+
+  applySnapshot(snapshot: PlayerSnapshotDTO): void {
+    this.state.id = snapshot.id
+    this.state.hp = snapshot.hp
+    this.state.maxHp = snapshot.maxHp
+    this.state.speed = snapshot.speed
+    this.state.rotation = snapshot.rotation
+    this.state.position.set(snapshot.position.x, snapshot.position.y, snapshot.position.z)
+    this.mesh.position.set(snapshot.position.x, snapshot.position.y, snapshot.position.z)
+    this.mesh.rotation.y = snapshot.rotation
   }
 
   private setupInput(): void {

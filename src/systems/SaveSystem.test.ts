@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { SaveSystem, SaveData } from './SaveSystem'
+import { SaveSystem, type SaveInput, type SaveData } from './SaveSystem'
 import { Inventory } from '../core/Inventory'
 import { ItemType } from './ItemSystem'
 import { WeaponType } from '../core/Weapon'
+import { createDefaultWorldConfig } from '../core/WorldConfig'
 
 describe('SaveSystem', () => {
   let saveSystem: SaveSystem
@@ -22,228 +23,156 @@ describe('SaveSystem', () => {
     saveSystem = new SaveSystem(mockLocalStorage as unknown as import('../core/dependencies/Storage').IStorage)
   })
 
-  describe('saveGame', () => {
-    it('should save game data to localStorage', () => {
-      const inventory = new Inventory()
-      inventory.addItem(ItemType.Ore, 10)
+  function createSaveInput(slotIndex = 0): SaveInput {
+    const inventory = new Inventory()
+    inventory.addItem(ItemType.Ore, 10)
 
-      const player = {
+    return {
+      slotIndex,
+      player: {
+        id: 'player_test',
         hp: 100,
         maxHp: 100,
         speed: 8,
         position: { x: 10, y: 0, z: 20 },
         rotation: 1.5
-      }
+      },
+      resources: {
+        gold: 500,
+        herbs: 20,
+        ores: 15,
+        gunpowder: 1,
+        lightAmmo: 2,
+        heavyAmmo: 3
+      },
+      combat: {
+        ammo: 30,
+        maxAmmo: 30,
+        currentWeaponType: WeaponType.Pistol
+      },
+      inventory,
+      world: {
+        seed: 'test_seed',
+        currentChunkX: 0,
+        currentChunkZ: 0,
+        worldConfig: createDefaultWorldConfig('test_seed')
+      },
+      enemies: []
+    }
+  }
 
-      const result = saveSystem.saveGame({
-        player,
-        resources: {
-          gold: 500,
-          herbs: 20,
-          ores: 15,
-          gunpowder: 0,
-          lightAmmo: 0,
-          heavyAmmo: 0
-        },
-        combat: {
-          ammo: 30,
-          maxAmmo: 30,
-          currentWeaponType: WeaponType.Pistol
-        },
-        inventory,
-        world: {
-          seed: 'test_seed',
-          currentChunkX: 0,
-          currentChunkZ: 0
-        }
-      })
+  describe('saveGame', () => {
+    it('saves game data to slot key', () => {
+      const result = saveSystem.saveGame(createSaveInput(2))
 
       expect(result).toBe(true)
-      expect(mockStorage.cute_survivor_save).toBeDefined()
+      expect(mockStorage.cute_survivor_save_2).toBeDefined()
     })
 
-    it('should include version and timestamp', () => {
-      const inventory = new Inventory()
-      const player = {
-        hp: 100,
-        maxHp: 100,
-        speed: 8,
-        position: { x: 0, y: 0, z: 0 },
-        rotation: 0
-      }
+    it('includes version and timestamp', () => {
+      saveSystem.saveGame(createSaveInput(0))
 
-      saveSystem.saveGame({
-        player,
-        resources: {
-          gold: 0,
-          herbs: 0,
-          ores: 0,
-          gunpowder: 0,
-          lightAmmo: 0,
-          heavyAmmo: 0
-        },
-        combat: {
-          ammo: 0,
-          maxAmmo: 30,
-          currentWeaponType: WeaponType.Pistol
-        },
-        inventory,
-        world: { seed: 'seed', currentChunkX: 0, currentChunkZ: 0 }
-      })
-
-      const savedData: SaveData = JSON.parse(mockStorage.cute_survivor_save)
-      expect(savedData.version).toBe('1.0.0')
-      expect(savedData.timestamp).toBeDefined()
+      const savedData: SaveData = JSON.parse(mockStorage.cute_survivor_save_0)
+      expect(savedData.version).toBe('1.1.0')
       expect(savedData.timestamp).toBeGreaterThan(0)
+      expect(savedData.slotIndex).toBe(0)
+    })
+
+    it('persists extended enemy snapshot fields', () => {
+      const input = createSaveInput(0)
+      input.enemies = [{
+        id: 'enemy_1',
+        type: 'goblin',
+        hp: 35,
+        maxHp: 40,
+        position: { x: 11, y: 0, z: -9 },
+        rotation: 0.3,
+        speed: 3.5,
+        damage: 8,
+        detectRange: 12,
+        attackRange: 1.2,
+        state: 'chase',
+        animPhase: 0.6,
+        isAggro: true,
+        patrolTarget: { x: 15, y: 0, z: -7 },
+        attackCooldown: 0.5,
+        hasRangedAttack: true,
+        rangedAttackRange: 10,
+        rangedAttackDamage: 9,
+        rangedAttackCooldown: 2,
+        rangedAttackTimer: 1.3,
+        aggroRange: 15,
+        leashRange: 24,
+        deaggroTimer: 0.2,
+        colliderRadius: 0.55
+      }]
+
+      saveSystem.saveGame(input)
+      const saved = saveSystem.getSave(0)
+
+      expect(saved).not.toBeNull()
+      expect(saved!.enemies).toHaveLength(1)
+      expect(saved!.enemies[0].deaggroTimer).toBe(0.2)
+      expect(saved!.enemies[0].colliderRadius).toBe(0.55)
+      expect(saved!.enemies[0].patrolTarget).toEqual({ x: 15, y: 0, z: -7 })
     })
   })
 
-  describe('loadGame', () => {
-    it('should return null when no save exists', () => {
+  describe('load/get', () => {
+    it('returns null when no save exists', () => {
       const result = saveSystem.loadGame()
       expect(result).toBeNull()
     })
 
-    it('should load saved game data', () => {
-      const savedData: SaveData = {
-        version: '1.0.0',
-        timestamp: Date.now(),
-        player: {
-          hp: 80,
-          maxHp: 100,
-          speed: 8,
-          position: { x: 50, y: 0, z: 30 },
-          rotation: 2.0,
-          gold: 1000,
-          herbs: 25,
-          ores: 15,
-          ammo: 20,
-          lightAmmo: 10,
-          heavyAmmo: 5,
-          gunpowder: 3,
-          inventory: {
-            items: [['ore', 10]],
-            equipment: { weapon: null, armor: null }
-          }
-        },
-        world: {
-          seed: 'test_seed',
-          currentChunkX: 1,
-          currentChunkZ: -1
-        }
-      }
-
-      mockStorage.cute_survivor_save = JSON.stringify(savedData)
+    it('loads saved game data', () => {
+      saveSystem.saveGame(createSaveInput(0))
 
       const result = saveSystem.loadGame()
 
       expect(result).not.toBeNull()
-      expect(result!.player.hp).toBe(80)
-      expect(result!.player.gold).toBe(1000)
+      expect(result!.player.hp).toBe(100)
+      expect(result!.player.gold).toBe(500)
       expect(result!.world.seed).toBe('test_seed')
     })
   })
 
   describe('deleteSave', () => {
-    it('should delete save data', () => {
-      const savedData: SaveData = {
-        version: '1.0.0',
-        timestamp: Date.now(),
-        player: {
-          hp: 100,
-          maxHp: 100,
-          speed: 8,
-          position: { x: 0, y: 0, z: 0 },
-          rotation: 0,
-          gold: 0,
-          herbs: 0,
-          ores: 0,
-          ammo: 0,
-          lightAmmo: 0,
-          heavyAmmo: 0,
-          gunpowder: 0,
-          inventory: { items: [], equipment: { weapon: null, armor: null } }
-        },
-        world: { seed: 'seed', currentChunkX: 0, currentChunkZ: 0 }
-      }
+    it('deletes save data by slot', () => {
+      saveSystem.saveGame(createSaveInput(1))
 
-      mockStorage.cute_survivor_save = JSON.stringify(savedData)
-
-      const result = saveSystem.deleteSave()
+      const result = saveSystem.deleteSave(1)
 
       expect(result).toBe(true)
-      expect(mockStorage.cute_survivor_save).toBeUndefined()
+      expect(mockStorage.cute_survivor_save_1).toBeUndefined()
     })
   })
 
   describe('getSaveInfo', () => {
-    it('should return hasData false when no save exists', () => {
-      const info = saveSystem.getSaveInfo()
+    it('returns hasData false when slot is empty', () => {
+      const info = saveSystem.getSaveInfo(3)
       expect(info.hasData).toBe(false)
       expect(info.timestamp).toBe(0)
     })
 
-    it('should return save info when save exists', () => {
-      const savedData: SaveData = {
-        version: '1.0.0',
-        timestamp: 1234567890,
-        player: {
-          hp: 100,
-          maxHp: 100,
-          speed: 8,
-          position: { x: 0, y: 0, z: 0 },
-          rotation: 0,
-          gold: 0,
-          herbs: 0,
-          ores: 0,
-          ammo: 0,
-          lightAmmo: 0,
-          heavyAmmo: 0,
-          gunpowder: 0,
-          inventory: { items: [], equipment: { weapon: null, armor: null } }
-        },
-        world: { seed: 'seed', currentChunkX: 0, currentChunkZ: 0 }
-      }
+    it('returns save info when slot has data', () => {
+      saveSystem.saveGame(createSaveInput(4))
 
-      mockStorage.cute_survivor_save = JSON.stringify(savedData)
-
-      const info = saveSystem.getSaveInfo()
+      const info = saveSystem.getSaveInfo(4)
 
       expect(info.hasData).toBe(true)
-      expect(info.timestamp).toBe(1234567890)
-      expect(info.version).toBe('1.0.0')
+      expect(info.version).toBe('1.1.0')
+      expect(info.slotIndex).toBe(4)
+      expect(info.seedPreview).toBe('test_see')
     })
   })
 
   describe('hasSave', () => {
-    it('should return false when no save exists', () => {
+    it('returns false when slot 0 is empty', () => {
       expect(saveSystem.hasSave()).toBe(false)
     })
 
-    it('should return true when save exists', () => {
-      const savedData: SaveData = {
-        version: '1.0.0',
-        timestamp: Date.now(),
-        player: {
-          hp: 100,
-          maxHp: 100,
-          speed: 8,
-          position: { x: 0, y: 0, z: 0 },
-          rotation: 0,
-          gold: 0,
-          herbs: 0,
-          ores: 0,
-          ammo: 0,
-          lightAmmo: 0,
-          heavyAmmo: 0,
-          gunpowder: 0,
-          inventory: { items: [], equipment: { weapon: null, armor: null } }
-        },
-        world: { seed: 'seed', currentChunkX: 0, currentChunkZ: 0 }
-      }
-
-      mockStorage.cute_survivor_save = JSON.stringify(savedData)
-
+    it('returns true when slot 0 has data', () => {
+      saveSystem.saveGame(createSaveInput(0))
       expect(saveSystem.hasSave()).toBe(true)
     })
   })

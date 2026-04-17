@@ -17,6 +17,33 @@ export interface EnemyState {
   animPhase: number
 }
 
+export interface EnemySnapshotDTO {
+  id: string
+  type: string
+  hp: number
+  maxHp: number
+  position: { x: number; y: number; z: number }
+  rotation: number
+  speed: number
+  damage: number
+  detectRange: number
+  attackRange: number
+  state: string
+  animPhase: number
+  isAggro: boolean
+  patrolTarget: { x: number; y: number; z: number }
+  attackCooldown: number
+  hasRangedAttack: boolean
+  rangedAttackRange: number
+  rangedAttackDamage: number
+  rangedAttackCooldown: number
+  rangedAttackTimer: number
+  aggroRange: number
+  leashRange: number
+  deaggroTimer?: number
+  colliderRadius?: number
+}
+
 export enum EnemyType {
   Goblin = 'goblin',
   Orc = 'orc',
@@ -47,6 +74,7 @@ export interface Rock {
 }
 
 export class Enemy {
+  public readonly id: string
   public mesh: THREE.Group
   public hp: number
   public maxHp: number
@@ -76,7 +104,8 @@ export class Enemy {
     damage: number
   ) => void
 
-  constructor(config: EnemyConfig, spawnPos: THREE.Vector3) {
+  constructor(config: EnemyConfig, spawnPos: THREE.Vector3, id?: string) {
+    this.id = id ?? `enemy_${config.type}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     this.type = config.type
     this.mesh = new THREE.Group()
     this.buildModel(config)
@@ -102,6 +131,75 @@ export class Enemy {
       0,
       spawnPos.z + (Math.random() - 0.5) * 10
     )
+  }
+
+  toSnapshot(): EnemySnapshotDTO {
+    return {
+      id: this.id,
+      type: this.type,
+      hp: this.hp,
+      maxHp: this.maxHp,
+      position: {
+        x: this.mesh.position.x,
+        y: this.mesh.position.y,
+        z: this.mesh.position.z
+      },
+      rotation: this.mesh.rotation.y,
+      speed: this.speed,
+      damage: this.damage,
+      detectRange: this.detectRange,
+      attackRange: this.attackRange,
+      state: this.state,
+      animPhase: this.animPhase,
+      isAggro: this.isAggro,
+      patrolTarget: {
+        x: this.patrolTarget.x,
+        y: this.patrolTarget.y,
+        z: this.patrolTarget.z
+      },
+      attackCooldown: this.attackCooldown,
+      hasRangedAttack: this.hasRangedAttack,
+      rangedAttackRange: this.rangedAttackRange,
+      rangedAttackDamage: this.rangedAttackDamage,
+      rangedAttackCooldown: this.rangedAttackCooldown,
+      rangedAttackTimer: this.rangedAttackTimer,
+      aggroRange: this.aggroRange,
+      leashRange: this.leashRange,
+      deaggroTimer: this.deaggroTimer,
+      colliderRadius: this.colliderRadius
+    }
+  }
+
+  applySnapshot(snapshot: EnemySnapshotDTO): void {
+    this.hp = snapshot.hp
+    this.maxHp = snapshot.maxHp
+    this.mesh.position.set(snapshot.position.x, snapshot.position.y, snapshot.position.z)
+    this.mesh.rotation.y = snapshot.rotation
+    this.speed = snapshot.speed
+    this.damage = snapshot.damage
+    this.detectRange = snapshot.detectRange
+    this.attackRange = snapshot.attackRange
+
+    const state = snapshot.state as EnemyAIState
+    this.state = Object.values(EnemyAIState).includes(state) ? state : EnemyAIState.Patrol
+
+    this.animPhase = snapshot.animPhase ?? 0
+    this.isAggro = snapshot.isAggro
+    this.patrolTarget = new THREE.Vector3(
+      snapshot.patrolTarget.x,
+      snapshot.patrolTarget.y,
+      snapshot.patrolTarget.z
+    )
+    this.attackCooldown = snapshot.attackCooldown ?? 1
+    this.hasRangedAttack = snapshot.hasRangedAttack
+    this.rangedAttackRange = snapshot.rangedAttackRange ?? 10
+    this.rangedAttackDamage = snapshot.rangedAttackDamage ?? 10
+    this.rangedAttackCooldown = snapshot.rangedAttackCooldown ?? 2
+    this.rangedAttackTimer = snapshot.rangedAttackTimer ?? 0
+    this.aggroRange = snapshot.aggroRange ?? this.detectRange * 1.3
+    this.leashRange = snapshot.leashRange ?? this.detectRange * 2
+    this.deaggroTimer = snapshot.deaggroTimer ?? 0
+    this.colliderRadius = snapshot.colliderRadius ?? 0.5
   }
 
   private buildModel(config: EnemyConfig): void {
@@ -648,24 +746,27 @@ export class EnemyManager {
     }
   }
 
-  spawnAt(config: EnemyConfig, position: THREE.Vector3, rocks: Rock[]): void {
-    const enemy = new Enemy(config, position)
+  spawnAt(config: EnemyConfig, position: THREE.Vector3, rocks: Rock[], id?: string): Enemy {
+    const enemy = new Enemy(config, position, id)
     enemy.setRocks(rocks)
     this.enemies.push(enemy)
     this.scene.add(enemy.mesh)
+    return enemy
   }
 
   spawnAtWithCallback(
     config: EnemyConfig,
     position: THREE.Vector3,
     rocks: Rock[],
-    rangedCallback: (position: THREE.Vector3, direction: THREE.Vector3, damage: number) => void
-  ): void {
-    const enemy = new Enemy(config, position)
+    rangedCallback: (position: THREE.Vector3, direction: THREE.Vector3, damage: number) => void,
+    id?: string
+  ): Enemy {
+    const enemy = new Enemy(config, position, id)
     enemy.setRocks(rocks)
     enemy.setRangedAttackCallback(rangedCallback)
     this.enemies.push(enemy)
     this.scene.add(enemy.mesh)
+    return enemy
   }
 
   getEnemies(): Enemy[] {

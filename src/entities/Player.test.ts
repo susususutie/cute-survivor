@@ -147,4 +147,48 @@ describe('Player', () => {
     expect(player.state.position.x).toBe(3)
     expect(player.state.position.z).toBe(4)
   })
+
+  it('toSnapshot exports serializable player state', () => {
+    const player = createPlayer()
+    player.mesh.position.set(12, 1, -6)
+    player.state.position.copy(player.mesh.position)
+    player.state.hp = 77
+    player.state.maxHp = 120
+    player.state.speed = 9
+    player.state.rotation = 1.25
+
+    const snapshot = player.toSnapshot()
+
+    expect(snapshot.id).toBe(player.state.id)
+    expect(snapshot.hp).toBe(77)
+    expect(snapshot.maxHp).toBe(120)
+    expect(snapshot.speed).toBe(9)
+    expect(snapshot.position).toEqual({ x: 12, y: 1, z: -6 })
+    expect(snapshot.rotation).toBe(1.25)
+  })
+
+  it('applySnapshot restores mesh and state consistently', () => {
+    const player = createPlayer()
+    const snapshot = {
+      id: 'player_snapshot_1',
+      hp: 42,
+      maxHp: 150,
+      speed: 11,
+      position: { x: -8, y: 0, z: 19 },
+      rotation: Math.PI / 3
+    }
+
+    player.applySnapshot(snapshot)
+
+    expect(player.state.id).toBe(snapshot.id)
+    expect(player.state.hp).toBe(snapshot.hp)
+    expect(player.state.maxHp).toBe(snapshot.maxHp)
+    expect(player.state.speed).toBe(snapshot.speed)
+    expect(player.state.rotation).toBe(snapshot.rotation)
+    expect(player.state.position.x).toBe(snapshot.position.x)
+    expect(player.state.position.z).toBe(snapshot.position.z)
+    expect(player.mesh.position.x).toBe(snapshot.position.x)
+    expect(player.mesh.position.z).toBe(snapshot.position.z)
+    expect(player.mesh.rotation.y).toBe(snapshot.rotation)
+  })
 })

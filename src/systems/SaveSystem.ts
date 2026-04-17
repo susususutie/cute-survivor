@@ -3,14 +3,11 @@ import type { ItemType } from './ItemSystem'
 import type { WeaponType } from '../core/Weapon'
 import type { WorldConfig } from '../core/WorldConfig'
 import type { IStorage } from '../core/dependencies/Storage'
-import { MemoryStorage } from '../core/dependencies/Storage'
+import { BrowserStorage, MemoryStorage } from '../core/dependencies/Storage'
+import type { EnemySnapshotDTO } from '../entities/Enemy'
+import type { PlayerSnapshotDTO } from '../entities/Player'
 
-export interface PlayerSaveData {
-  hp: number
-  maxHp: number
-  speed: number
-  position: { x: number; y: number; z: number }
-  rotation: number
+export interface PlayerSaveData extends PlayerSnapshotDTO {
   gold: number
   herbs: number
   ores: number
@@ -33,30 +30,7 @@ export interface WorldSaveData {
   worldConfig: WorldConfig
 }
 
-export interface EnemySaveData {
-  id: string
-  type: string
-  hp: number
-  maxHp: number
-  position: { x: number; y: number; z: number }
-  rotation: number
-  speed: number
-  damage: number
-  detectRange: number
-  attackRange: number
-  state: string
-  animPhase: number
-  isAggro: boolean
-  patrolTarget: { x: number; y: number; z: number }
-  attackCooldown: number
-  hasRangedAttack: boolean
-  rangedAttackRange: number
-  rangedAttackDamage: number
-  rangedAttackCooldown: number
-  rangedAttackTimer: number
-  aggroRange: number
-  leashRange: number
-}
+export type EnemySaveData = EnemySnapshotDTO
 
 export interface SaveData {
   version: string
@@ -77,13 +51,7 @@ export interface SaveInfo {
 
 export interface SaveInput {
   slotIndex: number
-  player: {
-    hp: number
-    maxHp: number
-    speed: number
-    position: { x: number; y: number; z: number }
-    rotation: number
-  }
+  player: PlayerSnapshotDTO
   resources: {
     gold: number
     herbs: number
@@ -115,8 +83,15 @@ export class SaveSystem {
   private storage: IStorage
 
   constructor(storage?: IStorage) {
-    // Default to MemoryStorage for Node.js, but allow injection for browser
-    this.storage = storage ?? new MemoryStorage()
+    if (storage) {
+      this.storage = storage
+      return
+    }
+
+    // Prefer browser localStorage when available, fallback to in-memory for Node/tests.
+    this.storage = typeof globalThis !== 'undefined' && 'localStorage' in globalThis
+      ? new BrowserStorage(globalThis.localStorage)
+      : new MemoryStorage()
   }
 
   /**
@@ -138,6 +113,7 @@ export class SaveSystem {
         timestamp: Date.now(),
         slotIndex: input.slotIndex,
         player: {
+          id: input.player.id,
           hp: input.player.hp,
           maxHp: input.player.maxHp,
           speed: input.player.speed,

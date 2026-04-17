@@ -78,7 +78,7 @@ export interface GameState {
 export function createInitialGameState(seed: string, currentWeaponType: WeaponType): GameState {
   return {
     player: {
-      id: `player_${Date.now()}`,
+      id: `player_${seed}`,
       hp: 100,
       maxHp: 100,
       speed: 8,

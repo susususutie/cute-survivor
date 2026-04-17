@@ -12,10 +12,10 @@
  * No THREE.js, no DOM, no side-effects.
  */
 
-import type { GameLogicState, InputSnapshot, BulletState, EnemyLogicState, ItemState } from './types'
+import { ENEMY_TYPE, type GameLogicState, type InputSnapshot, type BulletState, type EnemyLogicState, type ItemState, type EnemyType } from './types'
 import type { GameDependencies } from './dependencies'
 import { updateBullet, isBulletDone } from './bullet'
-import { updateEnemyAI } from './enemy'
+import { spawnEnemy, updateEnemyAI } from './enemy'
 import { getCollisions } from './collision'
 import { processBulletHit, processPlayerHit, canAttack } from './combat'
 import { canCollectItem, collectItem, shouldDropItem, createDroppedItem, pickRandomItemType } from './item'
@@ -31,6 +31,14 @@ const ENEMY_SPAWN_INTERVAL = 3     // seconds
 const MAX_ENEMIES = 15
 const AUTO_SAVE_INTERVAL = 30      // seconds
 const ENEMY_DROP_CHANCE = 0.6
+const ENEMY_SPAWN_TYPES: EnemyType[] = [
+  ENEMY_TYPE.Goblin,
+  ENEMY_TYPE.Orc,
+  ENEMY_TYPE.Slime,
+  ENEMY_TYPE.Bat,
+  ENEMY_TYPE.Skeleton,
+  ENEMY_TYPE.Mushroom
+]
 
 // ---------------------------------------------------------------------------
 // Main update function
@@ -203,16 +211,24 @@ export function updateGame(
   // 9. Enemy spawning (free-roam mode only)
   // ------------------------------------------------------------------
   newEnemySpawnTimer += delta
-  const newEnemies = workingState.enemies
+  let newEnemies = workingState.enemies
 
   if (newEnemySpawnTimer >= ENEMY_SPAWN_INTERVAL) {
     newEnemySpawnTimer = 0
     if (newEnemies.length < MAX_ENEMIES) {
-      // Spawn position logic is intentionally minimal here; the render layer
-      // translates this into a mesh.  We emit a signal by returning a
-      // "pending spawn" marker via the regular state; actual spawn functions
-      // (spawnEnemy from enemy.ts) are called by the thin bridge layer that
-      // reads pendingSpawns from the returned state.
+      const enemyType = deps.random.pick(ENEMY_SPAWN_TYPES)
+      const angle = deps.random.range(0, Math.PI * 2)
+      const distance = deps.random.range(15, 35)
+      const spawnPosition = {
+        x: newPlayerPos.x + Math.cos(angle) * distance,
+        y: 0,
+        z: newPlayerPos.z + Math.sin(angle) * distance
+      }
+      const enemyId = `enemy_${Math.floor(currentTime * 1000)}_${Math.floor(deps.random.next() * 1e6)}`
+      newEnemies = [
+        ...newEnemies,
+        spawnEnemy(enemyType, spawnPosition, enemyId, {}, deps.random)
+      ]
     }
   }
 
@@ -229,6 +245,7 @@ export function updateGame(
   // ------------------------------------------------------------------
   return {
     ...workingState,
+    enemies: newEnemies,
     world: {
       ...workingState.world,
       currentChunkX: newChunkX,

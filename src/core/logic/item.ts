@@ -5,8 +5,7 @@
  * No THREE.js, no DOM, no global state.
  */
 
-import type { Vector3, ItemState, PlayerLogicState, GameLogicState } from './types'
-import { ItemType } from '../../systems/ItemSystem'
+import { ITEM_TYPE, type Vector3, type ItemState, type PlayerLogicState, type GameLogicState, type ItemType } from './types'
 import { isWithinRange } from './physics'
 import type { IRandomSource } from './dependencies'
 
@@ -31,26 +30,26 @@ export function shouldDropItem(dropChance: number, random: IRandomSource): boole
 
 /** The set of item types that can drop from killed enemies. */
 const DROPPABLE_ITEMS: ItemType[] = [
-  ItemType.Gold,
-  ItemType.Ammo,
-  ItemType.Herb,
-  ItemType.Ore,
-  ItemType.LightAmmo,
-  ItemType.HeavyAmmo,
-  ItemType.HealthPotion
+  ITEM_TYPE.Gold,
+  ITEM_TYPE.Ammo,
+  ITEM_TYPE.Herb,
+  ITEM_TYPE.Ore,
+  ITEM_TYPE.LightAmmo,
+  ITEM_TYPE.HeavyAmmo,
+  ITEM_TYPE.HealthPotion
 ]
 
 /** Default drop values per item type. */
 const DEFAULT_VALUES: Record<ItemType, number> = {
-  [ItemType.Gold]:         10,
-  [ItemType.Herb]:          5,
-  [ItemType.Ore]:           8,
-  [ItemType.Ammo]:         15,
-  [ItemType.Gunpowder]:     3,
-  [ItemType.LightAmmo]:    12,
-  [ItemType.HeavyAmmo]:     6,
-  [ItemType.HealthPotion]: 25,
-  [ItemType.SpeedPotion]:   5
+  [ITEM_TYPE.Gold]:         10,
+  [ITEM_TYPE.Herb]:          5,
+  [ITEM_TYPE.Ore]:           8,
+  [ITEM_TYPE.Ammo]:         15,
+  [ITEM_TYPE.Gunpowder]:     3,
+  [ITEM_TYPE.LightAmmo]:    12,
+  [ITEM_TYPE.HeavyAmmo]:     6,
+  [ITEM_TYPE.HealthPotion]: 25,
+  [ITEM_TYPE.SpeedPotion]:   5
 }
 
 /**
@@ -122,38 +121,38 @@ export function collectItem(
   let newPlayer = { ...state.player }
 
   switch (item.type) {
-    case ItemType.Gold:
+    case ITEM_TYPE.Gold:
       newResources = { ...newResources, gold: newResources.gold + item.value }
       break
-    case ItemType.Herb:
+    case ITEM_TYPE.Herb:
       newResources = { ...newResources, herbs: newResources.herbs + item.value }
       break
-    case ItemType.Ore:
+    case ITEM_TYPE.Ore:
       newResources = { ...newResources, ores: newResources.ores + item.value }
       break
-    case ItemType.Gunpowder:
+    case ITEM_TYPE.Gunpowder:
       newResources = { ...newResources, gunpowder: newResources.gunpowder + item.value }
       break
-    case ItemType.Ammo:
-    case ItemType.LightAmmo:
+    case ITEM_TYPE.Ammo:
+    case ITEM_TYPE.LightAmmo:
       newCombat = {
         ...newCombat,
         ammo: Math.min(newCombat.ammo + item.value, newCombat.maxAmmo)
       }
-      if (item.type === ItemType.LightAmmo) {
+      if (item.type === ITEM_TYPE.LightAmmo) {
         newResources = { ...newResources, lightAmmo: newResources.lightAmmo + item.value }
       }
       break
-    case ItemType.HeavyAmmo:
+    case ITEM_TYPE.HeavyAmmo:
       newResources = { ...newResources, heavyAmmo: newResources.heavyAmmo + item.value }
       break
-    case ItemType.HealthPotion:
+    case ITEM_TYPE.HealthPotion:
       newPlayer = {
         ...newPlayer,
         hp: Math.min(newPlayer.hp + item.value, newPlayer.maxHp)
       }
       break
-    case ItemType.SpeedPotion:
+    case ITEM_TYPE.SpeedPotion:
       // Speed boost is ephemeral and tracked by the render layer;
       // nothing to update in the pure state.
       break
