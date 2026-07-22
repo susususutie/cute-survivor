@@ -3,7 +3,7 @@ import { Player } from '../entities/Player'
 import { BulletManager } from '../systems/BulletSystem'
 import { EnemyManager, EnemyType } from '../entities/Enemy'
 import type { EnemyConfig } from '../entities/Enemy'
-import { MapGenerator, SeededRandom } from '../systems/MapGenerator'
+import { MapGenerator } from '../systems/MapGenerator'
 import type { MapData, Vegetation } from '../systems/MapGenerator'
 import { ItemManager, ItemType } from '../systems/ItemSystem'
 import { UIManager } from '../systems/UIManager'
@@ -14,11 +14,28 @@ import { WeaponProficiency } from './WeaponProficiency'
 import { WeaponType, Weapon, WeaponRegistry } from './Weapon'
 import { MiniMap } from '../systems/MiniMap'
 import { SettingsUI } from '../systems/SettingsUI'
+import { CraftingSystem } from '../systems/CraftingSystem'
 import { DefenseMode } from './DefenseMode'
 import { createInitialGameState, type GameState } from './GameState'
 import { StartMenuManager } from '../systems/StartMenuManager'
-import { type WorldConfig } from './WorldConfig'
-import type { SaveData, EnemySaveData } from '../systems/SaveSystem'
+import { createDefaultWorldConfig, type WorldConfig } from './WorldConfig'
+import type { SaveData, EnemySaveData, SaveInput } from '../systems/SaveSystem'
+import type { ITimeSource, IRandomSource } from './dependencies/interfaces'
+import { TimeSource } from './dependencies/TimeSource'
+import { RandomSource } from './dependencies/RandomSource'
+import {
+  ammoItemForWeapon,
+  consumeHealthPotion,
+  recipeIdForAmmoItem,
+  reloadMagazine
+} from './logic/survivalActions'
+
+/** Game configuration for dependency injection */
+export interface GameConfig {
+  timeSource?: ITimeSource
+  randomSource?: IRandomSource
+  autoBoot?: boolean
+}
 
 export interface GameOptions {
   autoBoot?: boolean
@@ -34,6 +51,10 @@ export class Game {
   private camera: THREE.PerspectiveCamera
   private renderer: THREE.WebGLRenderer
   private clock: THREE.Clock
+  // Dependency-injected sources (with defaults)
+  // Public for testing and potential future use in game loop
+  public readonly timeSource: ITimeSource
+  public readonly randomSource: IRandomSource
   private player!: Player
   private bulletManager!: BulletManager
   private enemyBulletManager!: BulletManager
@@ -54,6 +75,7 @@ export class Game {
   private loadDistance = 2
   private saveSystem!: SaveSystem
   private inventory!: Inventory
+  private craftingSystem!: CraftingSystem
   private weaponProficiency!: WeaponProficiency
   private miniMap!: MiniMap
   private settingsUI!: SettingsUI
@@ -65,9 +87,7 @@ export class Game {
   private worldConfig!: WorldConfig
   private startMenuManager!: StartMenuManager
   private currentSlotIndex = -1
-  private monsterRNG!: SeededRandom
-  private readonly nowMs: () => number
-  private readonly randomFn: () => number
+  private monsterRNG!: Pick<IRandomSource, 'next'>
   private readonly requestFrame: (cb: FrameRequestCallback) => number
   private effectParticles: THREE.Points[] = []
   private eventHandlers: {
@@ -76,10 +96,11 @@ export class Game {
     resize: (() => void) | null
   } = { mouseDown: null, keyDown: null, resize: null }
 
-  constructor(options: GameOptions = {}) {
-    this.nowMs = options.nowMs ?? (() => performance.now())
-    this.randomFn = options.random ?? (() => Math.random())
-    this.requestFrame = options.requestFrame ?? ((cb) => requestAnimationFrame(cb))
+  constructor(config?: GameConfig) {
+    // Initialize dependency-injected sources with defaults
+    this.timeSource = config?.timeSource ?? new TimeSource()
+    this.randomSource = config?.randomSource ?? new RandomSource()
+    this.requestFrame = (cb) => requestAnimationFrame(cb)
 
     this.scene = new THREE.Scene()
     this.scene.background = new THREE.Color(0x1a1a2e)
@@ -102,22 +123,22 @@ export class Game {
 
     this.clock = new THREE.Clock()
 
+    this.saveSystem = new SaveSystem()
+    this.startMenuManager = new StartMenuManager(this.saveSystem)
+
     // Keep a concrete state object from construction time so tests/debugging can
     // read defaults before init() wires up the runtime systems.
     this.state = createInitialGameState('initial_seed', WeaponType.Pistol)
 
-    if (options.autoBoot ?? false) {
+    if (config?.autoBoot ?? false) {
       this.boot()
     }
   }
 
   boot(): void {
-    this.saveSystem = new SaveSystem()
-    this.startMenuManager = new StartMenuManager(this.saveSystem)
-
     this.startMenuManager.onContinue = (saveData: SaveData) => {
-      this.currentSlotIndex = saveData.slotIndex
-      this.worldConfig = saveData.world.worldConfig
+      this.currentSlotIndex = saveData.slotIndex ?? 0
+      this.worldConfig = saveData.world.worldConfig ?? createDefaultWorldConfig(saveData.world.seed)
       this.state.world.seed = saveData.world.seed
       this.initGameplay(saveData)
     }
@@ -132,6 +153,14 @@ export class Game {
     this.startMenuManager.showStartMenu()
     this.isInMenu = true
     this.animate()
+  }
+
+  init(): void {
+    const seed = 'TESTSEED'
+    this.currentSlotIndex = 0
+    this.worldConfig = createDefaultWorldConfig(seed)
+    this.state.world.seed = seed
+    this.initGameplay()
   }
 
   initGameplay(savedData?: SaveData): void {
@@ -150,7 +179,7 @@ export class Game {
     this.lastShotTime = 0
 
     // Initialize monster RNG for spawning (separate from terrain)
-    this.monsterRNG = new SeededRandom(this.nowMs())
+    this.monsterRNG = this.randomSource.seed(Date.now())
 
     // Initialize state if not continuing
     if (!savedData) {
@@ -160,6 +189,7 @@ export class Game {
     this.uiManager = new UIManager()
     this.audioManager = new AudioManager()
     this.inventory = new Inventory()
+    this.craftingSystem = new CraftingSystem(this.inventory)
     this.weaponProficiency = new WeaponProficiency()
     this.miniMap = new MiniMap(this.bounds * 2)
     this.settingsUI = new SettingsUI()
@@ -231,22 +261,31 @@ export class Game {
     }
 
     this.audioManager.startBGM()
+
+    if (!savedData) {
+      this.persistGame(false)
+    }
   }
 
   private cleanupGame(): void {
-    // Remove player
+    // Remove and dispose player
     if (this.player) {
       this.scene.remove(this.player.mesh)
+      this.player.dispose()
     }
 
-    // Remove all terrain chunks
+    // Remove all terrain chunks with proper material cleanup
     for (const [, chunk] of this.terrainChunks) {
       this.scene.remove(chunk)
       chunk.traverse((obj) => {
         if (obj instanceof THREE.Mesh) {
           obj.geometry.dispose()
-          if (obj.material instanceof THREE.Material) {
-            obj.material.dispose()
+          // Handle material arrays
+          if (obj.material) {
+            const materials = Array.isArray(obj.material) ? obj.material : [obj.material]
+            for (const mat of materials) {
+              mat.dispose()
+            }
           }
         }
       })
@@ -281,16 +320,20 @@ export class Game {
       this.scene.remove(obj)
       if (obj instanceof THREE.Mesh) {
         obj.geometry.dispose()
-        if (obj.material instanceof THREE.Material) {
-          obj.material.dispose()
+        if (obj.material) {
+          const materials = Array.isArray(obj.material) ? obj.material : [obj.material]
+          for (const mat of materials) {
+            mat.dispose()
+          }
         }
       }
     }
 
-    // Remove enemies and their meshes
+    // Remove enemies and dispose their resources
     if (this.enemyManager) {
       const enemies = this.enemyManager.getEnemies()
       for (const enemy of enemies) {
+        enemy.dispose()
         this.scene.remove(enemy.mesh)
       }
     }
@@ -299,12 +342,14 @@ export class Game {
     if (this.bulletManager) {
       const bullets = this.bulletManager.getBullets()
       for (const bullet of bullets) {
+        bullet.dispose()
         this.scene.remove(bullet.mesh)
       }
     }
     if (this.enemyBulletManager) {
       const bullets = this.enemyBulletManager.getBullets()
       for (const bullet of bullets) {
+        bullet.dispose()
         this.scene.remove(bullet.mesh)
       }
     }
@@ -322,13 +367,13 @@ export class Game {
 
     // Remove HUD
     const hud = document.getElementById('hud')
-    if (hud) hud.remove()
+    if (hud && typeof hud.remove === 'function') hud.remove()
     const pauseMenu = document.getElementById('pause-menu')
-    if (pauseMenu) pauseMenu.remove()
+    if (pauseMenu && typeof pauseMenu.remove === 'function') pauseMenu.remove()
     const gameOver = document.getElementById('game-over')
-    if (gameOver) gameOver.remove()
+    if (gameOver && typeof gameOver.remove === 'function') gameOver.remove()
     const defenseHud = document.getElementById('defense-hud')
-    if (defenseHud) defenseHud.remove()
+    if (defenseHud && typeof defenseHud.remove === 'function') defenseHud.remove()
 
     // Remove defense HUD from UIManager
     this.uiManager?.updateDefenseMode(false)
@@ -380,10 +425,11 @@ export class Game {
     this.state.combat.ammo = saveData.player.ammo
     this.state.combat.maxAmmo = saveData.player.maxAmmo ?? this.state.combat.maxAmmo
     const loadedWeaponType = saveData.player.currentWeaponType
-    this.state.combat.currentWeaponType = loadedWeaponType !== undefined &&
+    this.state.combat.currentWeaponType =
+      loadedWeaponType !== undefined &&
       (WeaponType as Record<string, string>)[loadedWeaponType] !== undefined
-      ? loadedWeaponType
-      : WeaponType.Pistol
+        ? loadedWeaponType
+        : WeaponType.Pistol
     this.playerWeapon = new Weapon(this.state.combat.currentWeaponType)
 
     // Restore world state
@@ -436,10 +482,16 @@ export class Game {
       // Restore equipment
       if (saveData.player.inventory.equipment) {
         if (saveData.player.inventory.equipment.weapon) {
-          this.inventory.setEquipment('weapon', saveData.player.inventory.equipment.weapon as ItemType)
+          this.inventory.setEquipment(
+            'weapon',
+            saveData.player.inventory.equipment.weapon as ItemType
+          )
         }
         if (saveData.player.inventory.equipment.armor) {
-          this.inventory.setEquipment('armor', saveData.player.inventory.equipment.armor as ItemType)
+          this.inventory.setEquipment(
+            'armor',
+            saveData.player.inventory.equipment.armor as ItemType
+          )
         }
       }
     }
@@ -491,12 +543,8 @@ export class Game {
     restoredEnemy.applySnapshot(enemyData)
   }
 
-  private saveGame(): void {
-    if (this.currentSlotIndex < 0) return
-
-    const enemySaveData = this.getEnemySaveData()
-
-    this.saveSystem.saveGame({
+  private createSaveInput(enemySaveData: EnemySaveData[]): SaveInput {
+    return {
       player: this.player.toSnapshot(),
       resources: { ...this.state.resources },
       combat: { ...this.state.combat },
@@ -509,7 +557,22 @@ export class Game {
       },
       slotIndex: this.currentSlotIndex,
       enemies: enemySaveData
-    })
+    }
+  }
+
+  private saveGame(): void {
+    if (this.currentSlotIndex < 0) return
+
+    this.persistGame(true)
+  }
+
+  private persistGame(showNotification: boolean): void {
+    if (this.currentSlotIndex < 0) return
+
+    const enemySaveData = this.getEnemySaveData()
+    this.saveSystem.saveGame(this.createSaveInput(enemySaveData))
+
+    if (!showNotification) return
 
     // Show save notification
     const notification = document.createElement('div')
@@ -530,7 +593,9 @@ export class Game {
       pointer-events: none;
     `
     document.body.appendChild(notification)
-    setTimeout(() => { notification.remove(); }, 1500)
+    setTimeout(() => {
+      notification.remove()
+    }, 1500)
   }
 
   // Back-compat getters (used by existing tests and handy for debugging).
@@ -728,7 +793,7 @@ export class Game {
 
         const petalGeo = new THREE.SphereGeometry(0.1 * veg.scale, 6, 6)
         const petalMat = new THREE.MeshStandardMaterial({
-          color: this.randomFn() > 0.5 ? 0xff66aa : 0xffaa66,
+          color: this.randomSource.next() > 0.5 ? 0xff66aa : 0xffaa66,
           emissive: 0xff6688,
           emissiveIntensity: 0.2
         })
@@ -816,7 +881,7 @@ export class Game {
 
         const petalGeo = new THREE.SphereGeometry(0.1 * veg.scale, 6, 6)
         const petalMat = new THREE.MeshStandardMaterial({
-          color: this.randomFn() > 0.5 ? 0xff66aa : 0xffaa66,
+          color: this.randomSource.next() > 0.5 ? 0xff66aa : 0xffaa66,
           emissive: 0xff6688,
           emissiveIntensity: 0.2
         })
@@ -873,6 +938,10 @@ export class Game {
     this.scene.add(ground)
   }
 
+  updateGround(): void {
+    // Ground is chunk-backed now; keep this legacy hook for tests/debug tooling.
+  }
+
   private createPlayer(): void {
     this.player = new Player()
     this.scene.add(this.player.mesh)
@@ -898,7 +967,7 @@ export class Game {
 
     // Weighted random selection based on worldConfig
     const types = Object.keys(this.worldConfig.monster.types) as EnemyType[]
-    const weights = types.map(t => this.worldConfig.monster.types[t].spawnWeight)
+    const weights = types.map((t) => this.worldConfig.monster.types[t].spawnWeight)
     const totalWeight = weights.reduce((a, b) => a + b, 0)
     let random = this.monsterRNG.next() * totalWeight
     let selectedType = types[0]
@@ -950,7 +1019,7 @@ export class Game {
     this.eventHandlers.mouseDown = (_e: MouseEvent) => {
       if (this.isPaused || this.isGameOver) return
 
-      const now = this.nowMs() / 1000
+      const now = this.timeSource.now() / 1000
       const weaponDef = WeaponRegistry.get(this.state.combat.currentWeaponType)
       if (!weaponDef) return
 
@@ -960,8 +1029,13 @@ export class Game {
       )
 
       if (now - this.lastShotTime >= effectiveFireRate && this.playerWeapon.canFire()) {
+        if (this.state.combat.ammo <= 0) {
+          this.uiManager.showToast('弹匣已空，按 R 装填。')
+          return
+        }
         this.lastShotTime = now
         this.playerWeapon.fire()
+        this.state.combat.ammo = Math.max(0, this.state.combat.ammo - 1)
 
         const baseDamage = this.weaponProficiency.getEffectiveDamage(
           weaponDef.stats.damage,
@@ -1007,6 +1081,15 @@ export class Game {
       if (e.key.toLowerCase() === 'q' || e.key.toLowerCase() === 'e') {
         this.switchWeapon(e.key.toLowerCase() === 'q' ? -1 : 1)
       }
+      if (e.key.toLowerCase() === 'r') {
+        this.reloadCurrentWeapon()
+      }
+      if (e.key.toLowerCase() === 'f') {
+        this.quickCraftCurrentAmmo()
+      }
+      if (e.key.toLowerCase() === 'h') {
+        this.useHealthPotion()
+      }
       if (e.key === 'Tab') {
         e.preventDefault()
         this.toggleDefenseMode()
@@ -1025,6 +1108,80 @@ export class Game {
     if (newIndex >= types.length) newIndex = 0
     this.state.combat.currentWeaponType = types[newIndex]
     this.playerWeapon = new Weapon(this.state.combat.currentWeaponType)
+    const weaponDef = WeaponRegistry.get(this.state.combat.currentWeaponType)
+    this.state.combat.maxAmmo = weaponDef?.stats.magazineSize ?? this.state.combat.maxAmmo
+    this.state.combat.ammo = Math.min(this.state.combat.ammo, this.state.combat.maxAmmo)
+    this.uiManager.showToast(`切换武器：${weaponDef?.name ?? this.state.combat.currentWeaponType}`)
+  }
+
+  private syncResourcesFromInventory(): void {
+    this.state.resources.gold = this.inventory.getItemCount(ItemType.Gold)
+    this.state.resources.herbs = this.inventory.getItemCount(ItemType.Herb)
+    this.state.resources.ores = this.inventory.getItemCount(ItemType.Ore)
+    this.state.resources.gunpowder = this.inventory.getItemCount(ItemType.Gunpowder)
+    this.state.resources.lightAmmo = this.inventory.getItemCount(ItemType.LightAmmo)
+    this.state.resources.heavyAmmo = this.inventory.getItemCount(ItemType.HeavyAmmo)
+  }
+
+  private quickCraftCurrentAmmo(): void {
+    const ammoType = ammoItemForWeapon(this.state.combat.currentWeaponType)
+    const recipeId = recipeIdForAmmoItem(ammoType)
+    const success = this.craftingSystem.craft(recipeId)
+    this.syncResourcesFromInventory()
+
+    if (success) {
+      const crafted = ammoType === ItemType.LightAmmo ? '轻型弹药 +10' : '重型弹药 +5'
+      this.uiManager.showToast(`制作完成：${crafted}`)
+    } else {
+      const needed = ammoType === ItemType.LightAmmo ? '需要 2 矿石' : '需要 3 矿石和 1 火药'
+      this.uiManager.showToast(`材料不足：${needed}`)
+    }
+  }
+
+  private reloadCurrentWeapon(): void {
+    const ammoType = ammoItemForWeapon(this.state.combat.currentWeaponType)
+    const result = reloadMagazine(this.state.combat, this.state.resources, ammoType)
+
+    this.state.combat.ammo = result.magazine.ammo
+    this.state.resources = { ...this.state.resources, ...result.resources }
+
+    const inventoryReserve = this.inventory.getItemCount(ammoType)
+    if (result.loaded > 0) {
+      this.inventory.removeItem(ammoType, Math.min(result.loaded, inventoryReserve))
+      this.playerWeapon.addAmmo(result.loaded)
+      this.uiManager.showToast(`装填 ${result.loaded} 发。`)
+    } else if (this.state.combat.ammo >= this.state.combat.maxAmmo) {
+      this.uiManager.showToast('弹匣已满。')
+    } else {
+      this.uiManager.showToast('备用弹药不足，按 F 制作。')
+    }
+
+    this.syncResourcesFromInventory()
+  }
+
+  private useHealthPotion(): void {
+    let potions = this.inventory.getItemCount(ItemType.HealthPotion)
+    if (potions <= 0 && this.craftingSystem.craft('first_aid_kit')) {
+      this.syncResourcesFromInventory()
+      potions = this.inventory.getItemCount(ItemType.HealthPotion)
+      this.uiManager.showToast('已用草药制作治疗药剂。')
+    }
+
+    const result = consumeHealthPotion(
+      { hp: this.player.state.hp, maxHp: this.player.state.maxHp },
+      potions,
+      30
+    )
+
+    if (result.healed <= 0) {
+      this.uiManager.showToast(potions <= 0 ? '没有治疗药剂，需要 3 草药。' : '生命值已满。')
+      return
+    }
+
+    this.inventory.removeItem(ItemType.HealthPotion, 1)
+    this.player.state.hp = result.health.hp
+    this.state.player.hp = result.health.hp
+    this.uiManager.showToast(`恢复 ${result.healed} 点生命。`)
   }
 
   private toggleDefenseMode(): void {
@@ -1045,22 +1202,7 @@ export class Game {
   private autoSave(): void {
     if (this.currentSlotIndex < 0) return
 
-    const enemySaveData = this.getEnemySaveData()
-
-    this.saveSystem.saveGame({
-      player: this.player.toSnapshot(),
-      resources: { ...this.state.resources },
-      combat: { ...this.state.combat },
-      inventory: this.inventory,
-      world: {
-        seed: this.worldConfig.seed,
-        currentChunkX: this.state.world.currentChunkX,
-        currentChunkZ: this.state.world.currentChunkZ,
-        worldConfig: this.worldConfig
-      },
-      slotIndex: this.currentSlotIndex,
-      enemies: enemySaveData
-    })
+    this.persistGame(false)
   }
 
   private handleResize(): void {
@@ -1195,14 +1337,14 @@ export class Game {
       positions[i * 3 + 1] = position.y + 0.5
       positions[i * 3 + 2] = position.z
 
-      const angle = this.randomFn() * Math.PI * 2
-      const speed = 4 + this.randomFn() * 6
+      const angle = this.randomSource.next() * Math.PI * 2
+      const speed = 4 + this.randomSource.next() * 6
       velocities.push(
-        new THREE.Vector3(Math.cos(angle) * speed, 3 + this.randomFn() * 5, Math.sin(angle) * speed)
+        new THREE.Vector3(Math.cos(angle) * speed, 3 + this.randomSource.next() * 5, Math.sin(angle) * speed)
       )
 
       const color = new THREE.Color()
-      const hue = this.randomFn() < 0.5 ? 0.05 + this.randomFn() * 0.1 : 0.5 + this.randomFn() * 0.2
+      const hue = this.randomSource.next() < 0.5 ? 0.05 + this.randomSource.next() * 0.1 : 0.5 + this.randomSource.next() * 0.2
       color.setHSL(hue, 1, 0.6)
       colors[i * 3] = color.r
       colors[i * 3 + 1] = color.g
@@ -1324,6 +1466,22 @@ export class Game {
     }
   }
 
+  private buildObjectiveText(): string {
+    if (this.player.state.hp < this.player.state.maxHp * 0.45) {
+      return '生命值偏低。优先消耗治疗药剂，必要时用草药补足治疗储备。'
+    }
+    if (this.state.combat.ammo <= Math.max(3, Math.floor(this.state.combat.maxAmmo * 0.2))) {
+      return '弹匣即将耗尽。拉开距离并补充当前武器的备用弹药。'
+    }
+    if (this.enemyManager.getEnemies().length >= 10) {
+      return '周围敌人增多。保持移动，利用岩石拉开距离并逐个清理。'
+    }
+    if (this.state.resources.ores >= 2 || this.state.resources.herbs >= 3) {
+      return '已有可用材料。把矿石转成弹药，把草药转成治疗储备。'
+    }
+    return '探索资源点，击败敌人获取掉落，维持弹药与治疗补给。'
+  }
+
   private update(delta: number): void {
     const px = Math.floor(this.player.mesh.position.x / this.chunkSize)
     const pz = Math.floor(this.player.mesh.position.z / this.chunkSize)
@@ -1362,7 +1520,24 @@ export class Game {
       this.state.combat.maxAmmo,
       this.state.resources.gold,
       this.state.resources.herbs,
-      this.state.resources.ores
+      this.state.resources.ores,
+      this.state.resources.gunpowder,
+      this.state.resources.lightAmmo,
+      this.state.resources.heavyAmmo,
+      this.inventory.getItemCount(ItemType.HealthPotion)
+    )
+
+    const weaponDef = WeaponRegistry.get(this.state.combat.currentWeaponType)
+    const ammoType = ammoItemForWeapon(this.state.combat.currentWeaponType)
+    const reserve =
+      ammoType === ItemType.LightAmmo
+        ? this.state.resources.lightAmmo
+        : this.state.resources.heavyAmmo
+    const objective = this.buildObjectiveText()
+    this.uiManager.updateLoadout(
+      weaponDef?.name ?? this.state.combat.currentWeaponType,
+      `备用 ${reserve}`,
+      objective
     )
 
     if (this.isDefenseMode) {

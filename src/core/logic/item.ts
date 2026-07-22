@@ -5,7 +5,7 @@
  * No THREE.js, no DOM, no global state.
  */
 
-import { ITEM_TYPE, type Vector3, type ItemState, type PlayerLogicState, type GameLogicState, type ItemType } from './types'
+import { ITEM_TYPE, type Vector3, type LogicItemState, type PlayerLogicState, type GameLogicState, type ItemType } from './types'
 import { isWithinRange } from './physics'
 import type { IRandomSource } from './dependencies'
 
@@ -67,7 +67,7 @@ export function createDroppedItem(
   quality: number,
   id: string,
   random: IRandomSource
-): ItemState {
+): LogicItemState {
   const baseValue = DEFAULT_VALUES[itemType] ?? 1
   // ±20 % variance
   const variance = 1 + (random.next() - 0.5) * 0.4
@@ -98,7 +98,7 @@ const COLLECT_RADIUS = 1.5
 /**
  * Returns true when the player is close enough to collect the item.
  */
-export function canCollectItem(player: PlayerLogicState, item: ItemState): boolean {
+export function canCollectItem(player: PlayerLogicState, item: LogicItemState): boolean {
   return isWithinRange(player.position, item.position, COLLECT_RADIUS)
 }
 

@@ -20,7 +20,9 @@ describe('SaveSystem', () => {
         delete mockStorage[key]
       })
     }
-    saveSystem = new SaveSystem(mockLocalStorage as unknown as import('../core/dependencies/Storage').IStorage)
+    saveSystem = new SaveSystem(
+      mockLocalStorage as unknown as import('../core/dependencies/Storage').IStorage
+    )
   })
 
   function createSaveInput(slotIndex = 0): SaveInput {
@@ -134,6 +136,105 @@ describe('SaveSystem', () => {
       expect(result!.player.gold).toBe(500)
       expect(result!.world.seed).toBe('test_seed')
     })
+
+    it('should migrate prefixed slot 0 saves created by previous versions', () => {
+      const savedData: SaveData = {
+        version: '1.0.0',
+        timestamp: Date.now(),
+        slotIndex: 0,
+        player: {
+          hp: 80,
+          maxHp: 100,
+          speed: 8,
+          position: { x: 50, y: 0, z: 30 },
+          rotation: 2.0,
+          gold: 1000,
+          herbs: 25,
+          ores: 15,
+          ammo: 20,
+          lightAmmo: 10,
+          heavyAmmo: 5,
+          gunpowder: 3,
+          inventory: {
+            items: [['ore', 10]],
+            equipment: { weapon: null, armor: null }
+          }
+        },
+        world: {
+          seed: 'prefixed_seed',
+          currentChunkX: 1,
+          currentChunkZ: -1
+        }
+      }
+
+      mockStorage.cute_survivor_save_0 = JSON.stringify(savedData)
+
+      const result = saveSystem.loadGame()
+
+      expect(result).not.toBeNull()
+      expect(result!.world.seed).toBe('prefixed_seed')
+      expect(mockStorage.cute_survivor_save).toBeDefined()
+      expect(mockStorage.cute_survivor_save_0).toBeUndefined()
+    })
+
+    it('should normalize legacy saves into the current complete save shape', () => {
+      mockStorage.cute_survivor_save = JSON.stringify({
+        version: '1.0.0',
+        timestamp: 123,
+        player: {
+          hp: 70,
+          maxHp: 100,
+          speed: 8,
+          position: { x: 5, y: 0, z: -3 },
+          rotation: 1,
+          gold: 12,
+          herbs: 3,
+          ores: 4,
+          ammo: 9,
+          lightAmmo: 6,
+          heavyAmmo: 2,
+          gunpowder: 1,
+          inventory: {
+            items: [],
+            equipment: { weapon: null, armor: null }
+          }
+        },
+        world: {
+          seed: 'legacy_seed',
+          currentChunkX: 2,
+          currentChunkZ: -2
+        },
+        enemies: [
+          {
+            id: 'old_enemy',
+            type: 'goblin',
+            hp: 10,
+            position: { x: 1, y: 0, z: 2 }
+          },
+          {
+            id: 'bad_enemy',
+            type: 'unknown'
+          }
+        ]
+      })
+
+      const result = saveSystem.loadGame()
+
+      expect(result).not.toBeNull()
+      expect(result!.slotIndex).toBe(0)
+      expect(result!.world.worldConfig.seed).toBe('legacy_seed')
+      expect(result!.player.maxAmmo).toBe(30)
+      expect(result!.player.currentWeaponType).toBe(WeaponType.Pistol)
+      expect(result!.player.inventory.items).toContainEqual([ItemType.Ore, 4])
+      expect(result!.player.inventory.items).toContainEqual([ItemType.Herb, 3])
+      expect(result!.player.inventory.items).toContainEqual([ItemType.LightAmmo, 6])
+      expect(result!.enemies).toHaveLength(1)
+      expect(result!.enemies[0].patrolTarget).toEqual({ x: 1, y: 0, z: 2 })
+
+      const persisted = JSON.parse(mockStorage.cute_survivor_save) as SaveData
+      expect(persisted.world.worldConfig).toBeDefined()
+      expect(persisted.enemies[0].patrolTarget).toEqual({ x: 1, y: 0, z: 2 })
+    })
   })
 
   describe('deleteSave', () => {
@@ -144,6 +245,15 @@ describe('SaveSystem', () => {
 
       expect(result).toBe(true)
       expect(mockStorage.cute_survivor_save_1).toBeUndefined()
+    })
+
+    it('should delete prefixed slot 0 save data too', () => {
+      mockStorage.cute_survivor_save_0 = '{}'
+
+      const result = saveSystem.deleteSave()
+
+      expect(result).toBe(true)
+      expect(mockStorage.cute_survivor_save_0).toBeUndefined()
     })
   })
 

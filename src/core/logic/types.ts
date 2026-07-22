@@ -1,15 +1,28 @@
 /**
- * Shared value types used across all pure logic modules.
- * No THREE.js, no DOM, no side effects.
+ * Logic layer types - extends core/state/ types for pure function logic.
+ *
+ * Design principle:
+ * - Base types (Vector3, etc.) are defined in core/state/
+ * - Logic-specific types (EnemyLogicState, PlayerLogicState) are defined here
+ * - No THREE.js, no DOM, no side effects
  */
 
 import type { WeaponType } from '../Weapon'
 
-/** Lightweight 3-D vector – mirrors THREE.Vector3 but carries no renderer deps. */
-export interface Vector3 {
-  x: number
-  y: number
-  z: number
+// Re-export base types from core/state/ for convenience
+export type { Vector3 } from '../state/player'
+
+// ---------------------------------------------------------------------------
+// Logic-specific state types (simplified for pure function processing)
+// ---------------------------------------------------------------------------
+
+/** Simplified item state for logic processing */
+export interface LogicItemState {
+  id: string
+  type: ItemType
+  position: { x: number; y: number; z: number }
+  value: number
+  quality: number
 }
 
 export const ENEMY_TYPE = {
@@ -41,11 +54,12 @@ export type ItemType = typeof ITEM_TYPE[keyof typeof ITEM_TYPE]
 // Bullet
 // ---------------------------------------------------------------------------
 
+/** Simplified bullet state for logic processing */
 export interface BulletState {
   id: string
   ownerId: string
-  position: Vector3
-  direction: Vector3
+  position: { x: number; y: number; z: number }
+  direction: { x: number; y: number; z: number }
   speed: number
   damage: number
   maxRange: number
@@ -54,16 +68,14 @@ export interface BulletState {
   lifetime: number
 }
 
-// ---------------------------------------------------------------------------
-// Enemy
-// ---------------------------------------------------------------------------
-
+/** AI states for enemy logic */
 export type EnemyAIState = 'patrol' | 'chase' | 'attack'
 
+/** Simplified enemy state for logic processing */
 export interface EnemyLogicState {
   id: string
   type: EnemyType
-  position: Vector3
+  position: { x: number; y: number; z: number }
   hp: number
   maxHp: number
   speed: number
@@ -73,7 +85,7 @@ export interface EnemyLogicState {
   aiState: EnemyAIState
   lastAttackTime: number
   attackCooldown: number
-  patrolTarget: Vector3
+  patrolTarget: { x: number; y: number; z: number }
   hasRangedAttack: boolean
   rangedAttackRange: number
   rangedAttackDamage: number
@@ -81,29 +93,14 @@ export interface EnemyLogicState {
   rangedAttackTimer: number
 }
 
-// ---------------------------------------------------------------------------
-// Player
-// ---------------------------------------------------------------------------
-
+/** Simplified player state for logic processing */
 export interface PlayerLogicState {
   id: string
-  position: Vector3
+  position: { x: number; y: number; z: number }
   hp: number
   maxHp: number
   speed: number
   rotation: number
-}
-
-// ---------------------------------------------------------------------------
-// Item
-// ---------------------------------------------------------------------------
-
-export interface ItemState {
-  id: string
-  type: ItemType
-  position: Vector3
-  value: number
-  quality: number
 }
 
 // ---------------------------------------------------------------------------
@@ -172,7 +169,7 @@ export interface GameLogicState {
   bullets: BulletState[]
   enemyBullets: BulletState[]
   enemies: EnemyLogicState[]
-  items: ItemState[]
+  items: LogicItemState[]
   enemySpawnTimer: number
   saveTimer: number
   isGameOver: boolean

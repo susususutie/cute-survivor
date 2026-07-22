@@ -11,7 +11,7 @@ import type {
   BulletState,
   EnemyLogicState,
   PlayerLogicState,
-  ItemState,
+  LogicItemState,
   CollisionResult,
   BulletEnemyHit,
   EnemyPlayerHit,
@@ -74,7 +74,7 @@ export function checkEnemyBulletPlayerCollision(
  */
 export function checkPlayerItemCollision(
   player: PlayerLogicState,
-  item: ItemState
+  item: LogicItemState
 ): boolean {
   const dist = calculateDistance(player.position, item.position)
   return dist < ITEM_RADIUS
@@ -100,7 +100,7 @@ export function getCollisions(
   enemyBullets: BulletState[],
   enemies: EnemyLogicState[],
   player: PlayerLogicState,
-  items: ItemState[]
+  items: LogicItemState[]
 ): CollisionResult {
   const bulletEnemyHits: BulletEnemyHit[] = []
   const enemyPlayerHits: EnemyPlayerHit[] = []

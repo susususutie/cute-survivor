@@ -34,6 +34,18 @@ export class UIManager {
       <div class="inventory">
         <span class="item">🌿 <span id="herb-value">0</span></span>
         <span class="item">💎 <span id="ore-value">0</span></span>
+        <span class="item">⚙ <span id="gunpowder-value">0</span></span>
+        <span class="item">L <span id="light-ammo-value">0</span></span>
+        <span class="item">H <span id="heavy-ammo-value">0</span></span>
+        <span class="item">✚ <span id="potion-value">0</span></span>
+      </div>
+      <div class="mission-panel">
+        <div class="mission-title">探索协议</div>
+        <div id="objective-text">收集矿石与草药，维持弹药和生命补给。</div>
+      </div>
+      <div class="loadout-panel">
+        <span id="weapon-value">Pistol</span>
+        <span id="reserve-value">备用 0</span>
       </div>
     `
     document.body.appendChild(hud)
@@ -100,11 +112,99 @@ export class UIManager {
       .inventory {
         margin-top: 8px;
         display: flex;
-        gap: 16px;
+        gap: 12px;
         font-size: 14px;
+        flex-wrap: wrap;
       }
       .inventory .item {
         color: #aabbcc;
+      }
+      .mission-panel {
+        position: fixed;
+        left: 24px;
+        bottom: 24px;
+        width: min(380px, calc(100vw - 48px));
+        background: rgba(12, 18, 28, 0.72);
+        border: 1px solid rgba(136, 170, 204, 0.28);
+        border-radius: 8px;
+        padding: 12px 14px;
+        color: #d8eef0;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.26);
+      }
+      .mission-title {
+        color: #88ffcc;
+        font-size: 12px;
+        letter-spacing: 0;
+        margin-bottom: 6px;
+      }
+      #objective-text {
+        font-size: 14px;
+        line-height: 1.45;
+      }
+      .loadout-panel {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+        color: #fff;
+        background: rgba(12, 18, 28, 0.72);
+        border: 1px solid rgba(255, 170, 68, 0.32);
+        border-radius: 8px;
+        padding: 12px 14px;
+        backdrop-filter: blur(10px);
+      }
+      #weapon-value {
+        color: #ffaa44;
+        font-weight: bold;
+        font-size: 18px;
+      }
+      #reserve-value {
+        color: #aabbcc;
+        font-size: 12px;
+      }
+      .game-toast {
+        position: fixed;
+        left: 50%;
+        bottom: 112px;
+        transform: translateX(-50%);
+        background: rgba(20, 28, 38, 0.92);
+        border: 1px solid rgba(136, 255, 204, 0.35);
+        border-radius: 8px;
+        color: #f2fff8;
+        padding: 10px 16px;
+        font-size: 14px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        opacity: 0;
+        transition: opacity 0.18s ease, transform 0.18s ease;
+      }
+      .game-toast.visible {
+        opacity: 1;
+        transform: translateX(-50%) translateY(-6px);
+      }
+      @media (max-width: 720px) {
+        #hud {
+          padding: 12px;
+        }
+        .stat-bar {
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .stat .bar {
+          width: 84px;
+        }
+        .mission-panel {
+          left: 12px;
+          bottom: 12px;
+          width: calc(100vw - 24px);
+        }
+        .loadout-panel {
+          right: 12px;
+          bottom: 150px;
+        }
       }
     `
     document.head.appendChild(style)
@@ -210,7 +310,11 @@ export class UIManager {
     maxAmmo: number,
     gold: number,
     herbs: number,
-    ores: number
+    ores: number,
+    gunpowder = 0,
+    lightAmmo = 0,
+    heavyAmmo = 0,
+    potions = 0
   ): void {
     const hpBar = document.getElementById('hp-bar')
     const hpValue = document.getElementById('hp-value')
@@ -219,6 +323,10 @@ export class UIManager {
     const goldValue = document.getElementById('gold-value')
     const herbValue = document.getElementById('herb-value')
     const oreValue = document.getElementById('ore-value')
+    const gunpowderValue = document.getElementById('gunpowder-value')
+    const lightAmmoValue = document.getElementById('light-ammo-value')
+    const heavyAmmoValue = document.getElementById('heavy-ammo-value')
+    const potionValue = document.getElementById('potion-value')
 
     if (hpBar) hpBar.style.width = `${(hp / maxHp) * 100}%`
     if (hpValue) hpValue.textContent = String(Math.max(0, hp))
@@ -227,6 +335,36 @@ export class UIManager {
     if (goldValue) goldValue.textContent = String(gold)
     if (herbValue) herbValue.textContent = String(herbs)
     if (oreValue) oreValue.textContent = String(ores)
+    if (gunpowderValue) gunpowderValue.textContent = String(gunpowder)
+    if (lightAmmoValue) lightAmmoValue.textContent = String(lightAmmo)
+    if (heavyAmmoValue) heavyAmmoValue.textContent = String(heavyAmmo)
+    if (potionValue) potionValue.textContent = String(potions)
+  }
+
+  updateLoadout(weaponName: string, reserveLabel: string, objective: string): void {
+    const weaponValue = document.getElementById('weapon-value')
+    const reserveValue = document.getElementById('reserve-value')
+    const objectiveText = document.getElementById('objective-text')
+
+    if (weaponValue) weaponValue.textContent = weaponName
+    if (reserveValue) reserveValue.textContent = reserveLabel
+    if (objectiveText) objectiveText.textContent = objective
+  }
+
+  showToast(message: string): void {
+    const toast = document.createElement('div')
+    toast.className = 'game-toast'
+    toast.textContent = message
+    document.body.appendChild(toast)
+    requestAnimationFrame(() => {
+      toast.classList.add('visible')
+    })
+    setTimeout(() => {
+      toast.classList.remove('visible')
+      setTimeout(() => {
+        toast.remove()
+      }, 220)
+    }, 1600)
   }
 
   showPauseMenu(): void {

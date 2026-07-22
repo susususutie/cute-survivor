@@ -104,6 +104,9 @@ export class Enemy {
     damage: number
   ) => void
 
+  // Timer cleanup
+  private activeTimers = new Set<ReturnType<typeof setTimeout>>()
+
   constructor(config: EnemyConfig, spawnPos: THREE.Vector3, id?: string) {
     this.id = id ?? `enemy_${config.type}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     this.type = config.type
@@ -668,9 +671,11 @@ export class Enemy {
         const originalColor = mat.color.getHex()
         mat.color.setHex(0xffffff)
 
-        setTimeout(() => {
+        const timerId = setTimeout(() => {
+          this.activeTimers.delete(timerId)
           mat.color.setHex(originalColor)
         }, 100)
+        this.activeTimers.add(timerId)
         break
       }
     }
@@ -682,17 +687,101 @@ export class Enemy {
     return this.mesh.position.clone()
   }
 
+  // --- Getters for private properties (eliminate type assertions in Game.ts) ---
+
+  getDetectRange(): number {
+    return this.detectRange
+  }
+
+  getAttackRange(): number {
+    return this.attackRange
+  }
+
+  getAggroRange(): number {
+    return this.aggroRange
+  }
+
+  getLeashRange(): number {
+    return this.leashRange
+  }
+
+  getAnimPhase(): number {
+    return this.animPhase
+  }
+
+  setAnimPhase(value: number): void {
+    this.animPhase = value
+  }
+
+  getIsAggro(): boolean {
+    return this.isAggro
+  }
+
+  setIsAggro(value: boolean): void {
+    this.isAggro = value
+  }
+
+  getPatrolTarget(): THREE.Vector3 {
+    return this.patrolTarget.clone()
+  }
+
+  setPatrolTarget(value: THREE.Vector3): void {
+    this.patrolTarget.copy(value)
+  }
+
+  getAttackCooldown(): number {
+    return this.attackCooldown
+  }
+
+  setAttackCooldown(value: number): void {
+    this.attackCooldown = value
+  }
+
+  getHasRangedAttack(): boolean {
+    return this.hasRangedAttack
+  }
+
+  getRangedAttackRange(): number {
+    return this.rangedAttackRange
+  }
+
+  getRangedAttackDamage(): number {
+    return this.rangedAttackDamage
+  }
+
+  getRangedAttackCooldown(): number {
+    return this.rangedAttackCooldown
+  }
+
+  getRangedAttackTimer(): number {
+    return this.rangedAttackTimer
+  }
+
+  setRangedAttackTimer(value: number): void {
+    this.rangedAttackTimer = value
+  }
+
+  setAIState(value: EnemyAIState): void {
+    this.state = value
+  }
+
   dispose(): void {
+    // Clear all active timers
+    this.activeTimers.forEach((timerId) => {
+      clearTimeout(timerId)
+    })
+    this.activeTimers.clear()
+
     this.mesh.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         if (child.geometry) {
           child.geometry.dispose()
         }
         if (child.material) {
-          if (child.material instanceof THREE.MeshStandardMaterial) {
-            child.material.dispose()
-          } else if (child.material instanceof THREE.MeshBasicMaterial) {
-            child.material.dispose()
+          // Handle all material types including arrays
+          const materials = Array.isArray(child.material) ? child.material : [child.material]
+          for (const mat of materials) {
+            mat.dispose()
           }
         }
       }

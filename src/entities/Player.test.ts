@@ -16,8 +16,8 @@ vi.mock('three', async () => {
 })
 
 describe('Player', () => {
-  function createPlayer() {
-    return new Player()
+  function createPlayer(withRenderer = true) {
+    return new Player(withRenderer)
   }
 
   beforeEach(() => {
@@ -36,9 +36,16 @@ describe('Player', () => {
   it('starts at origin', () => {
     const player = createPlayer()
 
-    expect(player.mesh.position.x).toBe(0)
-    expect(player.mesh.position.y).toBe(0)
-    expect(player.mesh.position.z).toBe(0)
+    expect(player.state.position.x).toBe(0)
+    expect(player.state.position.y).toBe(0)
+    expect(player.state.position.z).toBe(0)
+  })
+
+  it('can be created without renderer for testing', () => {
+    const player = createPlayer(false)
+
+    expect(player.hasRenderer).toBe(false)
+    expect(player.state.hp).toBe(100)
   })
 
   it('takeDamage reduces hp', () => {
@@ -104,7 +111,7 @@ describe('Player', () => {
 
   it('getDirection returns correct vector after rotation', () => {
     const player = createPlayer()
-    player.mesh.rotation.y = Math.PI / 2
+    player.state.rotation = Math.PI / 2
     const dir = player.getDirection()
 
     expect(dir.x).toBeCloseTo(1, 5)
@@ -139,10 +146,9 @@ describe('Player', () => {
     expect(() => player.triggerRecoil()).not.toThrow()
   })
 
-  it('state.position is synced with mesh position', () => {
+  it('state.position can be modified directly', () => {
     const player = createPlayer()
-    player.mesh.position.set(3, 0, 4)
-    player.state.position.copy(player.mesh.position)
+    player.state.position.set(3, 0, 4)
 
     expect(player.state.position.x).toBe(3)
     expect(player.state.position.z).toBe(4)

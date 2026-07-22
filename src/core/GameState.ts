@@ -1,78 +1,84 @@
+/**
+ * GameState.ts - Re-exports from core/state/ for backward compatibility.
+ * This file serves as the public API for game state types used by Game.ts.
+ *
+ * For new code, prefer importing directly from './state/' or './state/index'.
+ */
+
 import type { WeaponType } from './Weapon'
 
-export interface GameResourcesState {
-  gold: number
-  herbs: number
-  ores: number
-  gunpowder: number
-  lightAmmo: number
-  heavyAmmo: number
-}
+// Re-export Vector3 from state for convenience
+export type { Vector3 } from './state/player'
 
-export interface GameCombatState {
-  ammo: number
-  maxAmmo: number
-  currentWeaponType: WeaponType
-}
+// Re-export core state types
+export type { PlayerState } from './state/player'
+export type { EnemyState, EnemyAIState } from './state/enemy'
+export type { BulletState } from './state/bullet'
+export type { ItemState } from './state/item'
+export type { CombatState } from './state/combat'
+export type { WorldState } from './state/world'
+export type { ResourcesState } from './state/resources'
+export type { GameState as FullGameState, GameDifficulty } from './state/game'
 
-export interface GameWorldState {
-  seed: string
-  currentChunkX: number
-  currentChunkZ: number
-}
-
-export interface GamePlayerState {
-  id: string
-  hp: number
-  maxHp: number
-  speed: number
-  position: { x: number; y: number; z: number }
-  rotation: number
-}
-
-export interface GameEnemyState {
-  id: string
-  type: string
-  hp: number
-  maxHp: number
-  position: { x: number; y: number; z: number }
-  rotation: number
-}
-
-export interface GameBulletState {
-  id: string
-  position: { x: number; y: number; z: number }
-  direction: { x: number; y: number; z: number }
-}
-
-export interface GameItemState {
-  id: string
-  type: string
-  position: { x: number; y: number; z: number }
-}
-
-export interface GameEffectState {
-  type: 'kill' | 'hit'
-  position: { x: number; y: number; z: number }
-}
-
-export interface GameDefenseState {
-  active: boolean
-  wave: number
-  totalWaves: number
-  enemiesRemaining: number
-}
-
+/**
+ * Simplified game state for Game.ts runtime.
+ * Contains only the fields actively used by the game loop.
+ */
 export interface GameState {
-  player: GamePlayerState
-  resources: GameResourcesState
-  combat: GameCombatState
-  world: GameWorldState
-  enemies: GameEnemyState[]
-  bullets: GameBulletState[]
-  items: GameItemState[]
-  effects: GameEffectState[]
-  defense: GameDefenseState
+  player: {
+    id: string
+    hp: number
+    maxHp: number
+    speed: number
+    position: { x: number; y: number; z: number }
+    rotation: number
+  }
+  resources: {
+    gold: number
+    herbs: number
+    ores: number
+    gunpowder: number
+    lightAmmo: number
+    heavyAmmo: number
+  }
+  combat: {
+    ammo: number
+    maxAmmo: number
+    currentWeaponType: WeaponType
+  }
+  world: {
+    seed: string
+    currentChunkX: number
+    currentChunkZ: number
+  }
+  enemies: {
+    id: string
+    type: string
+    hp: number
+    maxHp: number
+    position: { x: number; y: number; z: number }
+    rotation: number
+  }[]
+  bullets: {
+    id: string
+    position: { x: number; y: number; z: number }
+    direction: { x: number; y: number; z: number }
+  }[]
+  items: {
+    id: string
+    type: string
+    position: { x: number; y: number; z: number }
+  }[]
+  effects: {
+    type: 'kill' | 'hit'
+    position: { x: number; y: number; z: number }
+  }[]
+  defense: {
+    active: boolean
+    wave: number
+    totalWaves: number
+    enemiesRemaining: number
+  }
 }
 
 export function createInitialGameState(seed: string, currentWeaponType: WeaponType): GameState {

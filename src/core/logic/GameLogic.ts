@@ -12,7 +12,7 @@
  * No THREE.js, no DOM, no side-effects.
  */
 
-import { ENEMY_TYPE, type GameLogicState, type InputSnapshot, type BulletState, type EnemyLogicState, type ItemState, type EnemyType } from './types'
+import { ENEMY_TYPE, type GameLogicState, type InputSnapshot, type BulletState, type EnemyLogicState, type LogicItemState, type EnemyType } from './types'
 import type { GameDependencies } from './dependencies'
 import { updateBullet, isBulletDone } from './bullet'
 import { spawnEnemy, updateEnemyAI } from './enemy'
@@ -108,7 +108,7 @@ export function updateGame(
   // ------------------------------------------------------------------
   let bullets = advancedBullets
   let enemies = updatedEnemies
-  const newItems: ItemState[] = [...state.items]
+  const newItems: LogicItemState[] = [...state.items]
   let newEnemySpawnTimer = state.enemySpawnTimer
 
   const removedBulletIds = new Set<string>()
